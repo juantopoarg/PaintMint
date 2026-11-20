@@ -42,7 +42,7 @@ You can also drag files onto the window. Each image opens in its own tab.
 ## Panels and startup
 
 - PaintMint starts with a **blank white canvas** using the size of the last canvas you worked with (new image, resize or canvas size; 800×600 the first time).
-- Colors, History, Layers and Text live in one column on the right. Each panel can be **collapsed** inside the column (▾/▸ button or double-click on its title), **floated** (⧉) or closed (✕; reopen from the *View* menu). The Text panel opens by itself when you pick the Text tool.
+- Colors, History, Layers and Text live in one column on the right (drag its left edge to resize it; panels never tab together; content scrolls instead of being clipped). Each panel can be **collapsed** inside the column (▾/▸ button or double-click on its title), **floated** (⧉) or closed (✕; reopen from the *View* menu). The Text panel opens by itself when you pick the Text tool.
 - *View ▸ Floating panels (Paint.NET layout)* floats every panel over the canvas like Paint.NET (Tools top-left, History top-right, Colors bottom-left, Layers bottom-right); *View ▸ Reset panel layout* docks them again. *View ▸ Maximize window* (F11) toggles maximize.
 - **File ▸ New** has a *Maintain aspect ratio* lock so width and height change together.
 
@@ -82,7 +82,7 @@ Sliders (with numeric boxes) are also used for **size, hardness, opacity and the
 ```
 
 No display needed (Qt in `offscreen` mode) and no network (the updater tests use a fake downloader). Currently
-**246 tests pass**; 3 file-permission tests are skipped when running as `root` (root ignores permissions) and pass as a normal user.
+**248 tests pass**; 3 file-permission tests are skipped when running as `root` (root ignores permissions) and pass as a normal user.
 
 | File | Covers |
 |---|---|
@@ -192,7 +192,7 @@ Selection modifiers: `Ctrl` add · `Alt` subtract · `Ctrl+Alt` intersect · `Sh
 ## Steps to verify on Linux Mint
 
 1. `./scripts/install_deps.sh` finishes with "All good."
-2. `./scripts/run_tests.sh` → all green (246 passed).
+2. `./scripts/run_tests.sh` → all green (248 passed).
 3. `./paintmint.sh` opens the window in English. **File ▸ New** (800×600, white background).
 4. Brush (`B`): draw a stroke → `Ctrl+Z` removes it, `Ctrl+Y` brings it back.
 5. **Layers ▸ New layer**; draw on it; lower its opacity with the slider in the *Layers* panel; hide it with its checkbox.

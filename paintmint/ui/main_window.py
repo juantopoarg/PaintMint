@@ -54,6 +54,9 @@ def app_icon() -> QIcon:
     return icon
 
 
+LAYOUT_VERSION = "3"   # súbase al cambiar la disposición de los paneles (invalida el estado guardado)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, files=(), open_blank=False):
         super().__init__()
@@ -66,6 +69,8 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(app_icon())
         self.resize(1280, 800)
         self.setAcceptDrops(True)
+        # los paneles se apilan en columnas; no se permiten pestañas (Texto e Historial no deben quedar juntos)
+        self.setDockOptions(QMainWindow.AnimatedDocks)
         # botones de minimizar y maximizar siempre disponibles
         self.setWindowFlags(self.windowFlags() | Qt.WindowMinMaxButtonsHint)
         self.setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX)
@@ -118,6 +123,7 @@ class MainWindow(QMainWindow):
         self.text_dock = self._dock(tr('Text'), wrap_scroll(self.text_panel), Qt.RightDockWidgetArea, "text")
         set_collapsed(self.text_dock, True)          # se despliega al elegir la herramienta Texto
         self.resizeDocks([self.colors_dock, self.history_dock, self.layers_dock], [360, 110, 220], Qt.Vertical)
+        self.resizeDocks([self.colors_dock], [300], Qt.Horizontal)       # ancho inicial de la columna derecha
         lp = self.layers_panel.buttons
         lp["add"].clicked.connect(lambda: self.act_add_layer())
         lp["dup"].clicked.connect(lambda: self.act_duplicate_layer())
@@ -611,6 +617,19 @@ class MainWindow(QMainWindow):
         super().changeEvent(e)
 
     # -- disposición de los paneles -------------------------------------------------
+    def _fit_to_screen(self):
+        """Si la geometría guardada deja la ventana (y sus paneles) fuera de la pantalla, la ajusta."""
+        scr = QApplication.desktop().availableGeometry(self)
+        fg = self.frameGeometry()
+        w, h = min(fg.width(), scr.width()), min(fg.height(), scr.height())
+        if (w, h) != (fg.width(), fg.height()):
+            self.resize(max(self.minimumSizeHint().width(), w - (fg.width() - self.width())),
+                        max(self.minimumSizeHint().height(), h - (fg.height() - self.height())))
+        fg = self.frameGeometry()
+        x = min(max(scr.left(), fg.left()), scr.right() - fg.width() + 1)
+        y = min(max(scr.top(), fg.top()), scr.bottom() - fg.height() + 1)
+        self.move(x, y)
+
     def _panel_docks(self):
         return [self.toolbox_dock, self.colors_dock, self.history_dock, self.layers_dock, self.text_dock]
 
@@ -656,6 +675,7 @@ class MainWindow(QMainWindow):
                 return
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("state", self.saveState())
+        self.settings.setValue("layout_version", LAYOUT_VERSION)
         self.settings.setValue("collapsed", [d.objectName() for d in self._panel_docks() if is_collapsed(d)])
         e.accept()
 
@@ -663,6 +683,11 @@ class MainWindow(QMainWindow):
         g, s = self.settings.value("geometry"), self.settings.value("state")
         if g is not None:
             self.restoreGeometry(g)
+        self._fit_to_screen()
+        # un estado guardado por una versión con otra disposición de paneles (p. ej. Texto e Historial
+        # en pestañas) se descarta: se usa la disposición por defecto
+        if str(self.settings.value("layout_version", "")) != LAYOUT_VERSION:
+            return
         if s is not None:
             self.restoreState(s)
         collapsed = self.settings.value("collapsed")

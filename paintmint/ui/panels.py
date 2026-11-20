@@ -47,6 +47,8 @@ class LayersPanel(QWidget):
         self.blend = QComboBox()
         for key, label in BLEND_MODES.items():
             self.blend.addItem(label, key)
+        self.blend.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)   # no impone un ancho mínimo grande
+        self.blend.setMinimumContentsLength(8)
         row.addWidget(self.blend, 1)
         lay.addLayout(row)
         row = QHBoxLayout()
@@ -66,8 +68,10 @@ class LayersPanel(QWidget):
             b = QToolButton()
             b.setText(text)
             b.setToolTip(tip)
+            b.setFixedWidth(28)
             self.buttons[key] = b
             btns.addWidget(b)
+        btns.setSpacing(2)
         lay.addLayout(btns)
         self._thumb_timer = QTimer(self)
         self._thumb_timer.setSingleShot(True)

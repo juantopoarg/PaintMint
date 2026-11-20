@@ -53,8 +53,9 @@ def wrap_scroll(widget: QWidget) -> QScrollArea:
     sa.setWidget(widget)
     sa.setWidgetResizable(True)
     sa.setFrameShape(QFrame.NoFrame)
-    sa.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+    sa.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)   # nunca recortar el contenido
     sa.setMinimumHeight(60)
+    sa.setMinimumWidth(180)
     return sa
 
 
@@ -71,16 +72,27 @@ def is_collapsed(dock: QDockWidget) -> bool:
 
 
 def set_collapsed(dock: QDockWidget, collapsed: bool) -> None:
-    """Oculta el contenido y deja solo la barra de título; la columna reparte el espacio sobrante."""
+    """Deja solo la barra de título; la columna reparte el espacio sobrante.
+
+    El contenido no se oculta (``hide`` haría que Qt limite el ancho de toda la columna): se le fuerza
+    altura cero, de modo que la columna se puede seguir redimensionando.
+    """
     bar = dock.titleBarWidget()
     inner = dock.widget()
+    if bool(dock.property("collapsed")) == bool(collapsed) and dock.property("collapsed") is not None \
+            and inner is not None and (inner.maximumHeight() == 0) == bool(collapsed):
+        return
     dock.setProperty("collapsed", bool(collapsed))
     if inner is not None:
-        inner.setVisible(not collapsed)
+        if collapsed:
+            if inner.property("_min_h") is None:
+                inner.setProperty("_min_h", inner.minimumHeight())
+            inner.setMinimumHeight(0)
+            inner.setMaximumHeight(0)
+        else:
+            inner.setMaximumHeight(QWIDGETSIZE_MAX)
+            inner.setMinimumHeight(int(inner.property("_min_h") or 0))
     if isinstance(bar, DockTitleBar):
         bar.collapse_btn.setText("▸" if collapsed else "▾")
-    if collapsed:
-        dock.setMaximumHeight(bar.sizeHint().height() + 2)
-    else:
-        dock.setMaximumHeight(QWIDGETSIZE_MAX)
+    dock.setMaximumHeight(bar.sizeHint().height() + 2 if collapsed else QWIDGETSIZE_MAX)
     dock.updateGeometry()

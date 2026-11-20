@@ -436,7 +436,7 @@ def test_right_column_panels_collapse_and_expand(win):
         assert not is_collapsed(dock)
         full = dock.maximumHeight()
         set_collapsed(dock, True)
-        assert is_collapsed(dock) and not dock.widget().isVisibleTo(dock) and dock.maximumHeight() < 60
+        assert is_collapsed(dock) and dock.widget().maximumHeight() == 0 and dock.maximumHeight() < 60
         set_collapsed(dock, False)
         assert not is_collapsed(dock) and dock.maximumHeight() >= full
 
@@ -565,3 +565,38 @@ def test_paste_that_fits_does_not_ask(win, monkeypatch):
     monkeypatch.setattr(win, "_ask_paste_oversize", lambda *a: pytest.fail("no debe preguntar"))
     win.act_paste()
     assert len(view.session.doc.layers) == 2
+
+
+def test_stale_saved_layout_with_tabbed_docks_is_discarded(app, tmp_path):
+    from paintmint.ui import main_window
+    from PyQt5.QtCore import QSettings
+    QSettings.setPath(QSettings.NativeFormat, QSettings.UserScope, str(tmp_path))
+    old = main_window.MainWindow()
+    old.setDockOptions(old.dockOptions() | QtWidgets.QMainWindow.AllowTabbedDocks)
+    old.tabifyDockWidget(old.text_dock, old.history_dock)            # disposición antigua: pestañas
+    assert old.tabifiedDockWidgets(old.text_dock)
+    old.settings.setValue("state", old.saveState())                  # sin «layout_version», como las versiones previas
+    old.settings.remove("layout_version")
+    old.settings.sync()
+    new = main_window.MainWindow()
+    try:
+        assert new.tabifiedDockWidgets(new.text_dock) == [] and new.tabifiedDockWidgets(new.history_dock) == []
+        assert not new.dockOptions() & QtWidgets.QMainWindow.AllowTabbedDocks
+    finally:
+        new.close()
+        old.close()
+
+
+def test_right_column_can_be_resized_and_shows_all_content(win):
+    win.resize(1280, 800)
+    win.show()
+    QtWidgets.QApplication.processEvents()
+    assert win.colors_dock.minimumSizeHint().width() <= 260           # no impone un ancho enorme
+    docks = [win.colors_dock, win.history_dock, win.layers_dock, win.text_dock]   # el Texto colapsado no la bloquea
+    for wide in (420, 240, 420):
+        win.resizeDocks(docks, [wide] * 4, Qt.Horizontal)
+        QtWidgets.QApplication.processEvents()
+        assert all(abs(d.width() - wide) <= 12 for d in docks)
+    # si la columna es estrecha, el contenido se desplaza en vez de recortarse
+    sa = win.colors_dock.widget()
+    assert sa.horizontalScrollBarPolicy() == Qt.ScrollBarAsNeeded
