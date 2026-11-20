@@ -12,6 +12,18 @@ from ..render import raster
 from .base import NO_MODS, Tool, ToolContext
 
 
+def _pad_to(cov, rect, cov_rect):
+    """Coloca ``cov`` (que cubre ``cov_rect``) en un arreglo que cubre ``rect`` (⊇ ``cov_rect``)."""
+    out = np.zeros((rect[3] - rect[1], rect[2] - rect[0]), dtype=np.float32)
+    out[cov_rect[1] - rect[1]:cov_rect[3] - rect[1], cov_rect[0] - rect[0]:cov_rect[2] - rect[0]] = cov
+    return out
+
+
+def _aliased(cov, antialias):
+    """Sin suavizado: la cobertura se umbraliza a 0/1."""
+    return cov if antialias or cov is None else (cov >= 0.5).astype(np.float32)
+
+
 def _region_view(arr, rect):
     x0, y0, x1, y1 = rect
     return arr[y0:y1, x0:x1]
@@ -70,9 +82,13 @@ class StrokeTool(Tool):
         dirty = raster.stamp_segment(self.cov, p0, p1, size, hardness, aa, include_start=first)
         if raster.is_empty(dirty):
             return
-        alpha = _region_view(self.cov, dirty) * (ctx.options.opacity * self.color[3] / 255.0)
+        alpha = _region_view(self.cov, dirty) * ctx.options.opacity
         snap = _region_view(self.handle.snapshot, dirty)
-        block = raster.erase_alpha(snap, alpha) if self.erase else raster.over(snap, self.color[:3], alpha)
+        if self.erase:
+            block = raster.erase_alpha(snap, alpha)
+        else:
+            block = raster.paint_block(snap, self.color, _region_view(self.cov, dirty), ctx.options.opacity,
+                                       ctx.options.blend == "overwrite")
         self.handle.write(dirty, block)
 
 
@@ -107,8 +123,10 @@ class FillTool(Tool):
                 handle.cancel()
                 return
             rect = (int(cols[0]), int(rows[0]), int(cols[-1]) + 1, int(rows[-1]) + 1)
-            alpha = _region_view(region, rect).astype(np.float32) * (o.opacity * color[3] / 255.0)
-            handle.write(rect, raster.over(_region_view(handle.snapshot, rect), color[:3], alpha))
+            cov = _region_view(region, rect).astype(np.float32)
+            other = self.colors(ctx, button)[1]
+            handle.write(rect, raster.styled_fill(_region_view(handle.snapshot, rect), rect, cov, color, other,
+                                                  o.fill_style, o.opacity, o.blend == "overwrite"))
         except Exception:
             handle.cancel()
             raise
@@ -207,13 +225,25 @@ class ShapeTool(Tool):
             radius=o.corner_radius)
         if rect is None:
             return
+        fill_rect = rect
         primary, secondary = self.colors_
+        ow = o.blend == "overwrite"
+        if outline is not None and o.line_style != "solid":      # contorno con trazos/puntos
+            pts, closed = raster.shape_outline_points(kind, self.start, end, o.corner_radius)
+            rect2, outline, _ = raster.path_coverage(height, width, pts, closed, o.size, True, False, o.line_style)
+            if rect2 is None:
+                outline = None
+            else:
+                rect = raster.union_rect(rect, rect2)
+                if fill is not None:
+                    fill = _pad_to(fill, rect, fill_rect)
+                outline = _pad_to(outline, rect, rect2)
         block = _region_view(h.snapshot, rect)
         if fill is not None:
-            fc = secondary if mode == "both" else primary
-            block = raster.over(block, fc[:3], fill * (o.opacity * fc[3] / 255.0))
+            fg, bg = (secondary, primary) if mode == "both" else (primary, secondary)
+            block = raster.styled_fill(block, rect, _aliased(fill, o.antialias), fg, bg, o.fill_style, o.opacity, ow)
         if outline is not None:
-            block = raster.over(block, primary[:3], outline * (o.opacity * primary[3] / 255.0))
+            block = raster.paint_block(block, primary, _aliased(outline, o.antialias), o.opacity, ow)
         h.write(rect, block)
 
     def move(self, ctx, x, y, mods=NO_MODS):

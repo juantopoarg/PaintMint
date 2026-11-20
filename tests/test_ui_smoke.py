@@ -350,9 +350,9 @@ def test_colors_panel_hsv_wheel_target_and_palette(win):
     cp = win.colors_panel
     cp.spins["h"].setValue(120); cp.spins["s"].setValue(100); cp.spins["v"].setValue(100)
     assert win.options.primary[:3] == (0, 255, 0)
-    cp.set_target("secondary")
-    cp.wheel.changed.emit(0, 100)                          # rojo puro
+    cp.wheel.picked.emit(0, 100, "right")                  # clic derecho en la rueda: rojo puro al secundario
     assert win.options.secondary[:3] == (255, 0, 0) and win.options.primary[:3] == (0, 255, 0)
+    cp.set_target("secondary")
     cp.palette.picked.emit("left", (1, 2, 3, 4))           # clic izquierdo -> destino (secundario)
     assert win.options.secondary == (1, 2, 3, 4)
     cp.palette.picked.emit("right", (9, 8, 7, 255))        # derecho -> el otro (primario)
@@ -600,3 +600,77 @@ def test_right_column_can_be_resized_and_shows_all_content(win):
     # si la columna es estrecha, el contenido se desplaza en vez de recortarse
     sa = win.colors_dock.widget()
     assert sa.horizontalScrollBarPolicy() == Qt.ScrollBarAsNeeded
+
+
+def test_wheel_left_sets_primary_right_sets_secondary_even_from_black(win):
+    from PyQt5.QtCore import QPoint
+    cp = win.colors_panel
+    assert win.options.primary == (0, 0, 0, 255)            # valor 0: antes la rueda no tenía efecto
+    cp.wheel.picked.emit(120, 100, "left")
+    assert win.options.primary[:3] == (0, 255, 0)
+    cp.wheel.picked.emit(240, 100, "right")
+    assert win.options.secondary[:3] == (0, 0, 255) and win.options.primary[:3] == (0, 255, 0)
+    # con el ratón real: clic izquierdo y derecho sobre la rueda
+    from PyQt5.QtTest import QTest
+    win.options.primary = (0, 0, 0, 255); win.options.notify()
+    cp.set_target("primary")
+    wheel = cp.wheel
+    wheel.resize(150, 150)
+    pt = QPoint(wheel.width() // 2 + 40, wheel.height() // 2)            # hacia la derecha del centro: tono 0 (rojo)
+    QTest.mouseClick(wheel, Qt.LeftButton, Qt.NoModifier, pt)
+    assert win.options.primary[0] > 150 and win.options.primary[3] == 255
+    QTest.mouseClick(wheel, Qt.RightButton, Qt.NoModifier, QPoint(wheel.width() // 2 - 40, wheel.height() // 2))
+    assert win.options.secondary != (255, 255, 255, 255) and cp.target == "secondary"
+
+
+def test_new_tools_are_registered_with_icons_and_options(app):
+    from paintmint.tools import create_tools
+    from paintmint.ui.icons import tool_cursor, tool_icon
+    from paintmint.ui.main_window import TOOLBOX_LAYOUT, TOOL_KEYS
+    from paintmint.ui.panels import TOOL_OPTIONS
+    for key in ("curve", "freeform", "polygon", "clone", "recolor"):
+        assert key in create_tools() and key in TOOLBOX_LAYOUT and key in TOOL_KEYS and key in TOOL_OPTIONS
+        assert not tool_icon(key).isNull() and tool_cursor(key) is not None
+    assert len(set(TOOL_KEYS.values())) == len(TOOL_KEYS)                    # sin atajos repetidos
+
+
+def test_polygon_in_canvas_enter_confirms_esc_cancels_and_tool_switch_confirms(win):
+    from PyQt5.QtTest import QTest
+    view = win.add_document(Document(120, 90))
+    win.select_tool("polygon")
+    win.options.shape_mode = "fill"
+    win.options.primary = (255, 0, 0, 255)
+    vp = view.viewport()
+
+    def click(ix, iy):
+        pt = view._to_screen(ix, iy).toPoint()
+        QTest.mouseClick(vp, Qt.LeftButton, Qt.NoModifier, pt)
+
+    for p in ((20, 20), (90, 25), (50, 70)):
+        click(*p)
+    assert win.tools["polygon"].pending
+    QTest.keyClick(view, Qt.Key_Escape)                       # Esc descarta la edición pendiente
+    assert not win.tools["polygon"].pending and view.session.history.position == 0
+    for p in ((20, 20), (90, 25), (50, 70)):
+        click(*p)
+    QTest.keyClick(view, Qt.Key_Return)                       # Intro confirma
+    assert view.session.history.position == 1 and not win.tools["polygon"].pending
+    for p in ((20, 20), (90, 25), (50, 70)):
+        click(*p)
+    win.select_tool("brush")                                  # cambiar de herramienta confirma
+    assert view.session.history.position == 2
+    assert view.session.doc.layers[0].pixels[40, 55, 0] == 255
+    assert not win.errors
+
+
+def test_options_bar_shows_hatch_line_style_and_blend_for_shapes(win):
+    win.select_tool("rectangle")
+    bar = win.options_bar
+    for key in ("size", "shape_mode", "fill_style", "line_style", "aa", "blend"):
+        assert bar.widgets[key][1].isVisible(), key
+    bar.fill_style.setCurrentIndex(bar.fill_style.findData("cross"))
+    bar.line_style.setCurrentIndex(bar.line_style.findData("dot"))
+    bar.blend.setCurrentIndex(bar.blend.findData("overwrite"))
+    assert (win.options.fill_style, win.options.line_style, win.options.blend) == ("cross", "dot", "overwrite")
+    win.select_tool("brush")
+    assert not bar.widgets["fill_style"][1].isVisible()

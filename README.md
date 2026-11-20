@@ -44,6 +44,7 @@ You can also drag files onto the window. Each image opens in its own tab.
 - PaintMint starts with a **blank white canvas** using the size of the last canvas you worked with (new image, resize or canvas size; 800×600 the first time).
 - Colors, History, Layers and Text live in one column on the right (drag its left edge to resize it; panels never tab together; content scrolls instead of being clipped). Each panel can be **collapsed** inside the column (▾/▸ button or double-click on its title), **floated** (⧉) or closed (✕; reopen from the *View* menu). The Text panel opens by itself when you pick the Text tool.
 - *View ▸ Floating panels (Paint.NET layout)* floats every panel over the canvas like Paint.NET (Tools top-left, History top-right, Colors bottom-left, Layers bottom-right); *View ▸ Reset panel layout* docks them again. *View ▸ Maximize window* (F11) toggles maximize.
+- **Color wheel:** left click/drag sets the **primary** color, right click/drag sets the **secondary** one.
 - **File ▸ New** has a *Maintain aspect ratio* lock so width and height change together.
 
 ## Language
@@ -82,7 +83,7 @@ Sliders (with numeric boxes) are also used for **size, hardness, opacity and the
 ```
 
 No display needed (Qt in `offscreen` mode) and no network (the updater tests use a fake downloader). Currently
-**248 tests pass**; 3 file-permission tests are skipped when running as `root` (root ignores permissions) and pass as a normal user.
+**263 tests pass**; 3 file-permission tests are skipped when running as `root` (root ignores permissions) and pass as a normal user.
 
 | File | Covers |
 |---|---|
@@ -151,7 +152,8 @@ Every error path produces a `PaintMintError` with a user-facing message; the UI 
 |---|---|
 | Layers | new, **new layer via copy (Ctrl+J) / via cut (Ctrl+Shift+J)**, duplicate, delete, move up/down, merge down, flatten, visibility, opacity, 14 blend modes, rename, flip layer, rasterize text, compositing on save |
 | Selection | rectangle, ellipse, lasso, magic wand (**tolerance slider**, contiguous/global, sample image), add/subtract/intersect/XOR, invert, all/none, move selected pixels, **move selection only**, crop to selection; **Esc clears the selection** (same as Ctrl+D; if a gesture is in progress, Esc cancels it first) |
-| Drawing | brush (size, hardness, opacity, antialiasing), pencil, eraser, paint bucket, gradients (linear, reflected, diamond, radial, conical), shapes as separate tools (line, rectangle, rounded rectangle, ellipse; outline/fill/both; Shift = proportional), color picker |
+| Drawing | brush (width, hardness, opacity, antialiasing, blending), pencil, eraser, paint bucket, gradients (linear, reflected, diamond, radial, conical), shapes as separate tools (line, **curve**, rectangle, rounded rectangle, ellipse, **freeform shape**, **polygon**; outline/fill/both; Shift = proportional), **clone stamp** (Ctrl+click sets the source), **recolor**, color picker |
+| Shape options | Paint.NET-style tool bar: **brush width**, **fill** (solid color or hatch: horizontal, vertical, diagonal, cross, diagonal cross, dots, small/large checkerboard — foreground = fill color, background = the other color), **line style** (solid, dashed, dotted, dash-dot, dash-dot-dot), **antialiasing**, **blending** (normal / overwrite, i.e. alpha blending off) |
 | Text | editable text layers: font, size, bold, italic, alignment, color, drag to move |
 | Adjustments | brightness/contrast, levels, curves (interactive editor), hue/saturation, invert, black and white, sepia, posterize — all with preview |
 | Effects | Gaussian blur, sharpen, pixelate, noise — with preview |
@@ -170,29 +172,29 @@ Every error path produces a `PaintMintError` with a user-facing message; the UI 
 |---|---|---|
 | Native `.pdn` format | No | Closed proprietary .NET format; `.ora` (open standard) is offered to keep layers |
 | Effect plugins (.NET FX) | No | They depend on the .NET/Windows runtime; PaintMint effects are added as Python classes (`effects/`) |
-| Editable shapes with nodes/Bézier curves and polylines | No | A shape is committed on mouse release; this would need a persistent vector object model |
+| Fully editable vector shapes | Partial | Polygon and curve nodes can be dragged and added *until confirmed* (Enter, double click or switching tool); after that they are pixels (no persistent vector object model) |
 | Advanced artistic effects (oil, emboss, distortions, clouds, noise reduction…) | Partial | Adjustments and blur/sharpen were prioritized; the `Effect` framework lets you add more without changing the UI |
 | Per-channel color correction in Levels/Curves | No | Master channel only (RGB together) |
 | GIF animation, multipage TIFF | No | Only the first frame is opened/saved |
 | Alpha in BMP | No | Not interoperable; flattened on white |
 | ICC color profiles, 16 bits per channel | No | Work is in 8-bit sRGB; 16-bit images are converted to 8 on open |
-| Clone stamp, recolor, freeform curve | No | Outside the requested core; the `Tool` framework allows adding them |
 | Ruler, pixel grid, configurable selection antialiasing, custom brushes, pressure tablet | No | Outside the requested core |
 | Scanner/camera (WIA/TWAIN) | No | Windows-specific API |
 | Reduced-size effect preview for heavy effects | No | The preview uses full resolution (≈2.5 s for a blur on 12 MP) |
 
 ## Main shortcuts
 
-Tools: `S` select · `Shift+S` ellipse · `L` lasso · `W` wand · `M` move pixels · `Shift+M` move selection · `B` brush · `P` pencil · `E` eraser · `F` fill · `G` gradient · `I` line · `O` rectangle · `Shift+O` rounded · `J` ellipse · `T` text · `K` color picker · `Z` zoom · `H` pan.
+Tools: `S` select · `Shift+S` ellipse · `L` lasso · `W` wand · `M` move pixels · `Shift+M` move selection · `B` brush · `P` pencil · `E` eraser · `F` fill · `G` gradient · `I` line · `O` rectangle · `Shift+O` rounded · `J` ellipse · `T` text · `K` color picker · `C` clone stamp · `R` recolor · `Shift+I` curve · `Shift+F` freeform · `Shift+P` polygon · `Z` zoom · `H` pan.
 Edit: `Ctrl+Z` / `Ctrl+Y` undo/redo · `Ctrl+A/D/I` all/none/invert · `Esc` clear selection · `Backspace` fill with primary · `X` swap colors.
 Layers: `Ctrl+Shift+N` new · `Ctrl+Shift+D` duplicate · `Ctrl+M` merge down · `F4` properties.
 Adjustments: `Ctrl+L` levels · `Ctrl+Shift+M` curves · `Ctrl+Shift+U` hue/saturation · `Ctrl+Shift+I` invert · `Ctrl+Shift+G` black and white.
+Polygon/curve: click or drag nodes · `Enter` or double click confirms · `Esc` discards.
 Selection modifiers: `Ctrl` add · `Alt` subtract · `Ctrl+Alt` intersect · `Shift` square/circle.
 
 ## Steps to verify on Linux Mint
 
 1. `./scripts/install_deps.sh` finishes with "All good."
-2. `./scripts/run_tests.sh` → all green (248 passed).
+2. `./scripts/run_tests.sh` → all green (263 passed).
 3. `./paintmint.sh` opens the window in English. **File ▸ New** (800×600, white background).
 4. Brush (`B`): draw a stroke → `Ctrl+Z` removes it, `Ctrl+Y` brings it back.
 5. **Layers ▸ New layer**; draw on it; lower its opacity with the slider in the *Layers* panel; hide it with its checkbox.

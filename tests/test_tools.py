@@ -292,3 +292,125 @@ def test_separate_shape_tools_ignore_generic_shape_option(session, ctx, tools, k
         assert 0 < filled < 400
     else:
         assert filled > 800
+
+
+# ---------------------------------------------------------------- v1.3.2: más herramientas y opciones
+CTRL = frozenset({"ctrl"})
+
+
+def test_polygon_pending_until_finish_then_one_undo_step(session, ctx, tools):
+    t = tools["polygon"]
+    ctx.options.primary, ctx.options.shape_mode = (255, 0, 0, 255), "fill"
+    for p in ((10, 10), (60, 12), (35, 50)):
+        t.press(ctx, *p); t.release(ctx, *p)
+    assert t.pending and px(session, 35, 25) == (255, 0, 0, 255)       # vista previa ya visible
+    assert len(session.history.labels) == 0
+    t.finish(ctx)
+    assert not t.pending and len(session.history.labels) == 1
+    session.undo()
+    assert px(session, 35, 25) == (255, 255, 255, 255)
+
+
+def test_polygon_vertices_can_be_dragged_and_esc_cancels(session, ctx, tools):
+    t = tools["polygon"]
+    ctx.options.shape_mode = "fill"
+    for p in ((10, 10), (60, 10), (35, 50)):
+        t.press(ctx, *p); t.release(ctx, *p)
+    t.press(ctx, 35, 50); t.move(ctx, 80, 70); t.release(ctx, 80, 70)   # arrastra el tercer vértice
+    assert t.pts[2] == (80, 70)
+    t.cancel(ctx)
+    assert not t.pending and px(session, 35, 25) == (255, 255, 255, 255) and not session.history.labels
+
+
+def test_polygon_with_too_few_vertices_commits_nothing(session, ctx, tools):
+    t = tools["polygon"]
+    t.press(ctx, 10, 10); t.release(ctx, 10, 10)
+    t.press(ctx, 50, 50); t.release(ctx, 50, 50)
+    t.finish(ctx)
+    assert not session.history.labels
+
+
+def test_freeform_shape_closes_on_release(session, ctx, tools):
+    ctx.options.primary, ctx.options.shape_mode = (0, 0, 255, 255), "fill"
+    pts = [(10, 10), (40, 8), (60, 30), (50, 60), (15, 50), (10, 10)]
+    stroke(tools["freeform"], ctx, pts)
+    assert px(session, 35, 30) == (0, 0, 255, 255)
+    assert len(session.history.labels) == 1 and not tools["freeform"].pending
+
+
+def test_curve_line_then_bend_adds_node(session, ctx, tools):
+    t = tools["curve"]
+    ctx.options.primary, ctx.options.size = (0, 0, 0, 255), 3
+    t.press(ctx, 10, 40); t.move(ctx, 90, 40); t.release(ctx, 90, 40)
+    assert t.pending and len(t.pts) == 2 and px(session, 50, 40) == (0, 0, 0, 255)
+    t.press(ctx, 50, 40); t.move(ctx, 50, 10); t.release(ctx, 50, 10)      # se agarra la línea y se curva
+    assert len(t.pts) == 3 and t.pts[1] == (50, 10)
+    assert px(session, 50, 40) == (255, 255, 255, 255) and px(session, 50, 10)[:3] == (0, 0, 0)
+    t.finish(ctx)
+    assert len(session.history.labels) == 1
+
+
+def test_curve_click_far_from_line_starts_new_curve(session, ctx, tools):
+    t = tools["curve"]
+    t.press(ctx, 10, 10); t.move(ctx, 90, 10); t.release(ctx, 90, 10)
+    t.press(ctx, 10, 70); t.move(ctx, 90, 70); t.release(ctx, 90, 70)
+    t.finish(ctx)
+    assert len(session.history.labels) == 2
+
+
+def test_clone_stamp_needs_source_and_copies_offset(session, ctx, tools):
+    t = tools["clone"]
+    ctx.options.primary, ctx.options.size = (255, 0, 0, 255), 8
+    stroke(tools["brush"], ctx, [(20, 20), (24, 20)])                       # marca roja de origen
+    with pytest.raises(InvalidOperationError):
+        t.press(ctx, 60, 60)
+    t.press(ctx, 22, 20, "primary", CTRL); t.release(ctx, 22, 20, CTRL)     # fija el origen
+    assert not session.history.labels[1:]                                   # fijar origen no es una edición
+    ctx.options.hardness, ctx.options.opacity = 1.0, 1.0
+    stroke(t, ctx, [(62, 50), (64, 50)])                                    # copia con desplazamiento (-40, -30)
+    assert px(session, 63, 50)[:3] == (255, 0, 0)
+    assert px(session, 63, 70) == (255, 255, 255, 255)
+
+
+def test_recolor_replaces_only_matching_color(session, ctx, tools):
+    ctx.options.primary, ctx.options.size, ctx.options.hardness = (255, 255, 0, 255), 6, 1.0
+    session.fill_selection((200, 0, 0, 255))
+    stroke(tools["brush"], ctx, [(50, 40), (50, 40)])                       # un punto amarillo no debe afectarse
+    ctx.options.primary, ctx.options.secondary, ctx.options.tolerance = (0, 255, 0, 255), (200, 0, 0, 255), 10
+    stroke(tools["recolor"], ctx, [(10, 10), (30, 10)])
+    assert px(session, 20, 10)[:3] == (0, 255, 0)
+    assert px(session, 50, 40)[:3] == (255, 255, 0) and px(session, 20, 60)[:3] == (200, 0, 0)
+
+
+def test_hatch_fill_uses_both_colors_and_is_anchored_to_image(session, ctx, tools):
+    o = ctx.options
+    o.primary, o.secondary, o.shape_mode, o.fill_style = (255, 0, 0, 255), (0, 0, 255, 255), "fill", "horizontal"
+    stroke(tools["rectangle"], ctx, [(10, 10), (60, 50)])
+    colors = {px(session, 30, y)[:3] for y in range(12, 48)}
+    assert colors == {(255, 0, 0), (0, 0, 255)}
+    rows_red = [y for y in range(12, 48) if px(session, 30, y)[:3] == (255, 0, 0)]
+    assert all((y % 6) < 2 for y in rows_red)
+
+
+def test_bucket_hatch_and_dashed_outline_and_overwrite(session, ctx, tools):
+    o = ctx.options
+    o.primary, o.secondary, o.fill_style = (0, 128, 0, 255), (255, 255, 0, 255), "checker_large"
+    tools["fill"].press(ctx, 5, 5)
+    assert {px(session, x, 5)[:3] for x in range(0, 40)} == {(0, 128, 0), (255, 255, 0)}
+    session.undo()
+    o.fill_style, o.line_style, o.size, o.shape_mode = "solid", "dash", 3, "outline"
+    stroke(tools["line"], ctx, [(5, 40), (95, 40)])
+    row = [px(session, x, 40)[:3] == (0, 128, 0) for x in range(5, 95)]
+    assert any(row) and not all(row)                                         # trazos con huecos
+    session.undo()
+    o.line_style, o.blend, o.opacity, o.primary = "solid", "overwrite", 1.0, (10, 20, 30, 128)
+    stroke(tools["line"], ctx, [(5, 40), (95, 40)])
+    assert px(session, 50, 40) == (10, 20, 30, 128)                         # sobrescribe también el alfa
+
+
+def test_aliased_option_gives_hard_edges(session, ctx, tools):
+    o = ctx.options
+    o.antialias, o.shape_mode, o.primary = False, "fill", (0, 0, 0, 255)
+    stroke(tools["ellipse"], ctx, [(10, 10), (60, 50)])
+    alphas = {px(session, x, y)[0] for x in range(8, 64) for y in range(8, 54)}
+    assert alphas <= {0, 255}

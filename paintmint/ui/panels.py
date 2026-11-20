@@ -14,7 +14,7 @@ from .. import config
 from ..core.blend import BLEND_MODES
 from ..core.errors import PaintMintError
 from ..core.layer import TextSpec
-from ..render.raster import SHAPE_KINDS, GRADIENT_KINDS
+from ..render.raster import GRADIENT_KINDS, HATCH_STYLES, LINE_STYLES, SHAPE_KINDS
 from .colorwidgets import ColorWheel, GradientSlider, PaletteGrid, SliderSpin, SwatchPair, hsv_to_rgb, rgb_to_hsv
 from .qtutil import color_tuple, guarded, pixmap_from_rgba, qcolor, show_error
 
@@ -289,7 +289,7 @@ class ColorsPanel(QWidget):
         self.target_combo.currentIndexChanged.connect(self._target_changed)
         self.pair.selected.connect(self.set_target)
         self.more_btn.toggled.connect(self._toggle_details)
-        self.wheel.changed.connect(self._wheel_changed)
+        self.wheel.picked.connect(self._wheel_picked)
         self.hex.editingFinished.connect(self._hex_edited)
         self.palette.picked.connect(self._palette_picked)
         self.add_btn.clicked.connect(self._add_custom)
@@ -340,7 +340,13 @@ class ColorsPanel(QWidget):
             self._h, self._s, self._v = hs["h"], hs["s"], hs["v"]
             self._commit(hsv_to_rgb(self._h, self._s, self._v) + (a,))
 
-    def _wheel_changed(self, h, s):
+    def _wheel_picked(self, h, s, button):
+        """Clic izquierdo en la rueda -> color primario; derecho -> secundario (se arrastra igual)."""
+        which = "primary" if button == "left" else "secondary"
+        if which != self.target:
+            self.set_target(which)          # los controles pasan a mostrar el color elegido
+        if self._v == 0:                    # con valor 0 todo tono sería negro: se usa el brillo máximo
+            self._v = 100
         self._h, self._s = h, s
         self._commit(hsv_to_rgb(h, s, self._v) + (self.current()[3],))
 
@@ -543,17 +549,22 @@ TOOL_OPTIONS = {
     "select_rect": {"select_mode"}, "select_ellipse": {"select_mode"}, "select_lasso": {"select_mode"},
     "select_wand": {"select_mode", "tolerance", "contiguous", "sample"},
     "move": set(),
-    "brush": {"size", "hardness", "opacity", "aa"},
-    "pencil": {"size", "opacity"},
+    "brush": {"size", "hardness", "opacity", "aa", "blend"},
+    "pencil": {"size", "opacity", "blend"},
     "eraser": {"size", "hardness", "opacity", "aa"},
-    "fill": {"tolerance", "contiguous", "sample", "opacity"},
+    "fill": {"fill_style", "tolerance", "contiguous", "sample", "opacity", "blend"},
+    "clone": {"size", "hardness", "opacity", "aa"},
+    "recolor": {"size", "hardness", "tolerance", "opacity", "aa"},
     "gradient": {"gradient", "opacity"},
-    "shape": {"shape", "shape_mode", "size", "opacity", "radius"},
+    "shape": {"shape", "shape_mode", "size", "fill_style", "line_style", "aa", "blend", "opacity", "radius"},
     "move_selection": set(),
-    "line": {"size", "opacity"},
-    "rectangle": {"shape_mode", "size", "opacity"},
-    "rounded_rectangle": {"shape_mode", "size", "opacity", "radius"},
-    "ellipse": {"shape_mode", "size", "opacity"},
+    "line": {"size", "line_style", "aa", "blend", "opacity"},
+    "curve": {"size", "line_style", "aa", "blend", "opacity"},
+    "rectangle": {"size", "shape_mode", "fill_style", "line_style", "aa", "blend", "opacity"},
+    "rounded_rectangle": {"size", "shape_mode", "fill_style", "line_style", "aa", "blend", "opacity", "radius"},
+    "ellipse": {"size", "shape_mode", "fill_style", "line_style", "aa", "blend", "opacity"},
+    "freeform": {"size", "shape_mode", "fill_style", "line_style", "aa", "blend", "opacity"},
+    "polygon": {"size", "shape_mode", "fill_style", "line_style", "aa", "blend", "opacity"},
     "text": set(), "picker": {"sample"}, "zoom": set(), "pan": set(),
 }
 
@@ -586,6 +597,18 @@ class ToolOptionsBar(QToolBar):
         self.shape_mode = QComboBox()
         for k, label in (("outline", tr('Outline')), ("fill", tr('Fill')), ("both", tr('Outline and fill'))):
             self.shape_mode.addItem(label, k)
+        self.fill_style = QComboBox()
+        for k, label in zip(HATCH_STYLES, (tr('Solid color'), tr('Horizontal hatch'), tr('Vertical hatch'),
+                                           tr('Diagonal hatch \\'), tr('Diagonal hatch /'), tr('Cross hatch'),
+                                           tr('Diagonal cross hatch'), tr('Dots'), tr('Small checkerboard'),
+                                           tr('Large checkerboard'))):
+            self.fill_style.addItem(label, k)
+        self.line_style = QComboBox()
+        for k, label in zip(LINE_STYLES, (tr('Solid line'), tr('Dashed'), tr('Dotted'), tr('Dash-dot'), tr('Dash-dot-dot'))):
+            self.line_style.addItem(label, k)
+        self.blend = QComboBox()
+        self.blend.addItem(tr('Normal blending'), "normal")
+        self.blend.addItem(tr('Overwrite'), "overwrite")
         self.gradient = QComboBox()
         for k, label in zip(GRADIENT_KINDS, (tr('Linear'), tr('Reflected'), tr('Diamond'), "Radial", tr('Conical'))):
             self.gradient.addItem(label, k)
@@ -594,11 +617,14 @@ class ToolOptionsBar(QToolBar):
                          ("intersect", tr('Intersect')), ("xor", tr('Exclusive (XOR)'))):
             self.select_mode.addItem(label, k)
         add("select_mode", tr('Mode:'), self.select_mode)
-        add("size", tr('Size:'), self.size)
+        add("size", tr('Brush width:'), self.size)
         add("hardness", tr('Hardness:'), self.hardness)
         add("opacity", tr('Opacity:'), self.opacity)
         add("shape", tr('Shape:'), self.shape)
         add("shape_mode", tr('Style:'), self.shape_mode)
+        add("fill_style", tr('Fill:'), self.fill_style)
+        add("line_style", tr('Line style:'), self.line_style)
+        add("blend", tr('Blending:'), self.blend)
         add("radius", tr('Corners:'), self.radius)
         add("gradient", tr('Type:'), self.gradient)
         add("tolerance", tr('Tolerance:'), self.tolerance)
@@ -612,6 +638,9 @@ class ToolOptionsBar(QToolBar):
                        (self.contiguous, self.contiguous.toggled), (self.sample, self.sample.toggled),
                        (self.shape, self.shape.currentIndexChanged), (self.shape_mode, self.shape_mode.currentIndexChanged),
                        (self.gradient, self.gradient.currentIndexChanged),
+                       (self.fill_style, self.fill_style.currentIndexChanged),
+                       (self.line_style, self.line_style.currentIndexChanged),
+                       (self.blend, self.blend.currentIndexChanged),
                        (self.select_mode, self.select_mode.currentIndexChanged)):
             sig.connect(self._push)
         self.load()
@@ -627,6 +656,9 @@ class ToolOptionsBar(QToolBar):
         self.shape.setCurrentIndex(self.shape.findData(o.shape))
         self.shape_mode.setCurrentIndex(self.shape_mode.findData(o.shape_mode))
         self.gradient.setCurrentIndex(self.gradient.findData(o.gradient))
+        self.fill_style.setCurrentIndex(self.fill_style.findData(o.fill_style))
+        self.line_style.setCurrentIndex(self.line_style.findData(o.line_style))
+        self.blend.setCurrentIndex(self.blend.findData(o.blend))
         self.select_mode.setCurrentIndex(self.select_mode.findData(o.select_mode))
         self._busy = False
 
@@ -640,6 +672,8 @@ class ToolOptionsBar(QToolBar):
         o.contiguous, o.sample_image = self.contiguous.isChecked(), self.sample.isChecked()
         o.shape, o.shape_mode = self.shape.currentData(), self.shape_mode.currentData()
         o.gradient, o.select_mode = self.gradient.currentData(), self.select_mode.currentData()
+        o.fill_style, o.line_style = self.fill_style.currentData(), self.line_style.currentData()
+        o.blend = self.blend.currentData()
 
     def show_for(self, tool_key):
         wanted = TOOL_OPTIONS.get(tool_key, set())

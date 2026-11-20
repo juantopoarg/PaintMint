@@ -59,6 +59,24 @@ def tool_icon(key: str, size: int = 32, ink: QColor = None) -> QIcon:
         p.drawRect(QRectF(5, 12, 14, 14)); p.setPen(QPen(accent, 2)); p.drawEllipse(QRectF(13, 5, 14, 14))
     elif key == "line":
         p.setPen(QPen(ink, 3, Qt.SolidLine, Qt.RoundCap)); p.drawLine(7, 25, 25, 7)
+    elif key == "curve":
+        from PyQt5.QtGui import QPainterPath
+        path = QPainterPath(QPointF(6, 25)); path.cubicTo(8, 4, 22, 28, 26, 7)
+        p.setPen(QPen(ink, 2.5, Qt.SolidLine, Qt.RoundCap)); p.drawPath(path)
+        p.setPen(QPen(accent, 1)); p.setBrush(accent); p.drawRect(QRectF(4, 23, 4, 4)); p.drawRect(QRectF(24, 5, 4, 4))
+    elif key == "freeform":
+        from PyQt5.QtGui import QPainterPath
+        path = QPainterPath(QPointF(6, 22)); path.cubicTo(2, 8, 14, 4, 18, 12); path.cubicTo(22, 18, 30, 8, 27, 22)
+        path.closeSubpath(); p.setBrush(QColor(accent.red(), accent.green(), accent.blue(), 120)); p.drawPath(path)
+    elif key == "polygon":
+        p.setBrush(QColor(accent.red(), accent.green(), accent.blue(), 120))
+        p.drawPolygon(QPolygonF([QPointF(16, 5), QPointF(27, 13), QPointF(23, 26), QPointF(9, 26), QPointF(5, 13)]))
+    elif key == "clone":
+        p.drawRoundedRect(QRectF(8, 20, 16, 6), 2, 2); p.drawRect(QRectF(13, 12, 6, 8)); p.setBrush(accent)
+        p.drawEllipse(QRectF(11, 4, 10, 9))
+    elif key == "recolor":
+        p.setBrush(accent); p.drawEllipse(QRectF(5, 5, 12, 12)); p.setBrush(Qt.NoBrush)
+        p.drawEllipse(QRectF(15, 15, 12, 12)); p.drawLine(14, 18, 18, 14)
     elif key == "rectangle":
         p.drawRect(QRectF(6, 9, 20, 14))
     elif key == "rounded_rectangle":

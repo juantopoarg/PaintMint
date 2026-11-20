@@ -30,6 +30,9 @@ class ToolOptions:
     shape: str = "rectangle"
     shape_mode: str = "outline"      # outline | fill | both
     corner_radius: float = 12.0
+    fill_style: str = "solid"        # solid o un entramado (ver raster.HATCH_STYLES)
+    line_style: str = "solid"        # solid, dash, dot, dash_dot, dash_dot_dot
+    blend: str = "normal"            # normal | overwrite («sin mezcla alfa» de Paint.NET)
     gradient: str = "linear"
     select_mode: str = "replace"
     font_family: str = "Sans"
@@ -72,6 +75,14 @@ class Tool:
 
     def cancel(self, ctx: ToolContext) -> None:
         self.overlay = None
+
+    # herramientas con edición pendiente entre clics (polígono, curva): se confirman con ``finish``
+    @property
+    def pending(self) -> bool:
+        return False
+
+    def finish(self, ctx: ToolContext) -> None:
+        """Confirma la edición pendiente (Intro, doble clic, cambiar de herramienta). Por defecto no hace nada."""
 
     # -- utilidades --------------------------------------------------------
     @staticmethod

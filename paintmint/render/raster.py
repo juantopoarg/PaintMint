@@ -338,3 +338,208 @@ def shape_coverage(h: int, w: int, kind: str, p0, p1, width: float, want_outline
             box(d, tx, ty, s, -width / 2.0, 0)
         outline = _supersample(rect, draw_ring)
     return rect, outline, fill_cov
+
+
+# --------------------------------------------------------------------------
+# Rellenos con entramado, estilos de línea y modo de fusión (como Paint.NET)
+# --------------------------------------------------------------------------
+HATCH_STYLES = ("solid", "horizontal", "vertical", "diagonal_down", "diagonal_up", "cross", "diagonal_cross",
+                "dots", "checker_small", "checker_large")
+LINE_STYLES = ("solid", "dash", "dot", "dash_dot", "dash_dot_dot")
+# patrones (en múltiplos del grosor): longitud visible de cada trazo y de cada hueco
+_LINE_PATTERNS = {
+    "dash": (4.0, 2.0),
+    "dot": (1.0, 2.0),
+    "dash_dot": (4.0, 2.0, 1.0, 2.0),
+    "dash_dot_dot": (4.0, 2.0, 1.0, 2.0, 1.0, 2.0),
+}
+
+
+def hatch_mask(rect: Rect, style: str) -> np.ndarray:
+    """Máscara booleana (True = color primario) del entramado ``style`` sobre ``rect``.
+
+    El patrón está anclado a las coordenadas de la imagen, de modo que formas contiguas encajan.
+    """
+    x0, y0, x1, y1 = rect
+    X, Y = np.meshgrid(np.arange(x0, x1), np.arange(y0, y1))
+    if style == "horizontal":
+        return (Y % 6) < 2
+    if style == "vertical":
+        return (X % 6) < 2
+    if style == "diagonal_down":
+        return ((X - Y) % 8) < 2
+    if style == "diagonal_up":
+        return ((X + Y) % 8) < 2
+    if style == "cross":
+        return ((X % 8) < 2) | ((Y % 8) < 2)
+    if style == "diagonal_cross":
+        return (((X - Y) % 8) < 2) | (((X + Y) % 8) < 2)
+    if style == "dots":
+        return ((X % 4) < 2) & ((Y % 4) < 2)
+    if style == "checker_small":
+        return ((X // 4) + (Y // 4)) % 2 == 0
+    if style == "checker_large":
+        return ((X // 8) + (Y // 8)) % 2 == 0
+    raise ValueError(f"Unknown hatch style: {style}")
+
+
+def paint_block(block: np.ndarray, color, cov: np.ndarray, opacity: float = 1.0, overwrite: bool = False) -> np.ndarray:
+    """Pinta ``color`` con cobertura ``cov`` sobre ``block``.
+
+    ``overwrite=False``: composición normal (mezcla alfa). ``overwrite=True``: «sin mezcla alfa» de
+    Paint.NET, el píxel se sustituye (también su alfa) en proporción a la cobertura.
+    """
+    if not overwrite:
+        return over(block, color[:3], cov * (opacity * color[3] / 255.0))
+    t = np.clip(cov * opacity, 0.0, 1.0).astype(np.float32)[..., None]
+    tgt = np.array(color[:4], dtype=np.float32)
+    out = block.astype(np.float32) * (1.0 - t) + tgt * t
+    return np.clip(np.rint(out), 0, 255).astype(np.uint8)
+
+
+def styled_fill(block: np.ndarray, rect: Rect, cov: np.ndarray, fg, bg, style: str, opacity: float = 1.0,
+                overwrite: bool = False) -> np.ndarray:
+    """Rellena la cobertura ``cov``: color sólido ``fg`` o entramado (``fg`` sobre ``bg``)."""
+    if style in (None, "solid"):
+        return paint_block(block, fg, cov, opacity, overwrite)
+    m = hatch_mask(rect, style)
+    block = paint_block(block, bg, cov * (~m), opacity, overwrite)
+    return paint_block(block, fg, cov * m, opacity, overwrite)
+
+
+def blend_pixels(dst: np.ndarray, src: np.ndarray, cov: np.ndarray) -> np.ndarray:
+    """Compone ``src`` (RGBA por píxel) sobre ``dst`` con cobertura ``cov`` (para el tampón de clonar)."""
+    sa = (src[..., 3].astype(np.float32) / 255.0) * cov.astype(np.float32)
+    da = dst[..., 3].astype(np.float32) / 255.0
+    oa = sa + da * (1.0 - sa)
+    num = src[..., :3].astype(np.float32) * sa[..., None] + dst[..., :3].astype(np.float32) * (da * (1.0 - sa))[..., None]
+    rgb = np.zeros_like(num)
+    np.divide(num, oa[..., None], out=rgb, where=oa[..., None] > 1e-6)
+    out = np.empty_like(dst)
+    out[..., :3] = np.clip(np.rint(rgb), 0, 255).astype(np.uint8)
+    out[..., 3] = np.clip(np.rint(oa * 255.0), 0, 255).astype(np.uint8)
+    return out
+
+
+def recolor_block(block: np.ndarray, old, new, tolerance: float, cov: np.ndarray, opacity: float = 1.0) -> np.ndarray:
+    """Sustituye por ``new`` los píxeles parecidos a ``old`` (tolerancia en %), ponderado por ``cov``."""
+    diff = np.abs(block[..., :3].astype(np.int16) - np.array(old[:3], dtype=np.int16)).max(axis=2)
+    match = (diff <= (tolerance / 100.0) * 255.0) & (block[..., 3] > 0)
+    t = (cov * opacity * match).astype(np.float32)[..., None]
+    out = block.copy()
+    rgb = block[..., :3].astype(np.float32) * (1.0 - t) + np.array(new[:3], dtype=np.float32) * t
+    out[..., :3] = np.clip(np.rint(rgb), 0, 255).astype(np.uint8)
+    return out
+
+
+# --------------------------------------------------------------------------
+# Trazados: polígonos, formas libres, curvas y contornos con estilo de línea
+# --------------------------------------------------------------------------
+def spline_points(nodes: Sequence[Tuple[float, float]], per_segment: int = 24) -> List[Tuple[float, float]]:
+    """Curva de Catmull-Rom que pasa por ``nodes`` (con 2 nodos es una recta)."""
+    pts = [tuple(map(float, n)) for n in nodes]
+    if len(pts) < 3:
+        return pts
+    ext = [pts[0]] + pts + [pts[-1]]
+    out: List[Tuple[float, float]] = [pts[0]]
+    for i in range(1, len(ext) - 2):
+        p0, p1, p2, p3 = ext[i - 1], ext[i], ext[i + 1], ext[i + 2]
+        for k in range(1, per_segment + 1):
+            t = k / float(per_segment)
+            t2, t3 = t * t, t * t * t
+            out.append(tuple(0.5 * ((2 * p1[j]) + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2
+                                    + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t3) for j in (0, 1)))
+    return out
+
+
+def shape_outline_points(kind: str, p0, p1, radius: float = 12.0) -> Tuple[List[Tuple[float, float]], bool]:
+    """Contorno de una forma como polilínea ``(puntos, cerrada)`` (para dibujarlo con estilo de línea)."""
+    xa, xb = sorted((p0[0], p1[0]))
+    ya, yb = sorted((p0[1], p1[1]))
+    if kind == "line":
+        return [tuple(p0), tuple(p1)], False
+    if kind == "rectangle":
+        return [(xa, ya), (xb, ya), (xb, yb), (xa, yb)], True
+    if kind == "ellipse":
+        cx, cy, rx, ry = (xa + xb) / 2, (ya + yb) / 2, (xb - xa) / 2, (yb - ya) / 2
+        n = max(48, int(2 * math.pi * max(rx, ry) / 3))
+        return [(cx + rx * math.cos(2 * math.pi * i / n), cy + ry * math.sin(2 * math.pi * i / n)) for i in range(n)], True
+    if kind == "rounded_rectangle":
+        r = max(0.0, min(radius, (xb - xa) / 2, (yb - ya) / 2))
+        pts: List[Tuple[float, float]] = []
+        for cx, cy, a0 in ((xb - r, ya + r, -90), (xb - r, yb - r, 0), (xa + r, yb - r, 90), (xa + r, ya + r, 180)):
+            for i in range(0, 10):
+                a = math.radians(a0 + 90.0 * i / 9)
+                pts.append((cx + r * math.cos(a), cy + r * math.sin(a)))
+        return pts, True
+    raise ValueError(f"Unknown shape type: {kind}")
+
+
+def _dash_runs(points, closed: bool, width: float, style: str):
+    """Reparte la polilínea en tramos «encendidos» según el patrón de ``style``."""
+    pts = list(points) + ([points[0]] if closed and len(points) > 2 else [])
+    pat = _LINE_PATTERNS[style]
+    # longitud del eje de cada elemento: la punta redonda añade ``width`` al trazo visible
+    segs = []
+    for i, v in enumerate(pat):
+        vis = v * width
+        segs.append(max(0.0, vis - width) if i % 2 == 0 else vis + width)
+    runs, cur, idx, remain, on = [], [pts[0]], 0, segs[0], True
+    for a, b in zip(pts, pts[1:]):
+        L = math.hypot(b[0] - a[0], b[1] - a[1])
+        pos = 0.0
+        while L - pos > 1e-9:
+            step = min(remain, L - pos)
+            t = (pos + step) / L if L else 1.0
+            q = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+            if on:
+                cur.append(q)
+            pos += step
+            remain -= step
+            if remain <= 1e-9:
+                if on:
+                    runs.append(cur)
+                idx = (idx + 1) % len(segs)
+                remain, on = segs[idx], not on
+                cur = [q] if on else []
+    if on and len(cur) >= 1:
+        runs.append(cur if len(cur) > 1 else cur + cur)
+    return runs
+
+
+def path_coverage(h: int, w: int, points, closed: bool, width: float, want_outline: bool, want_fill: bool,
+                  line_style: str = "solid"):
+    """Cobertura de un trazado. Devuelve ``(rect, contorno|None, relleno|None)``."""
+    pts = [tuple(map(float, p)) for p in points]
+    if not pts:
+        return None, None, None
+    width = max(1.0, float(width))
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    pad = int(math.ceil(width / 2.0)) + 2
+    rect = clip_rect((int(math.floor(min(xs))) - pad, int(math.floor(min(ys))) - pad,
+                      int(math.ceil(max(xs))) + pad, int(math.ceil(max(ys))) + pad), w, h)
+    if is_empty(rect):
+        return None, None, None
+    hw = width / 2.0
+
+    def stroke(d, tx, ty, run, close):
+        seq = run + ([run[0]] if close and len(run) > 2 else [])
+        for (ax, ay), (bx, by) in zip(seq, seq[1:]):
+            L = math.hypot(bx - ax, by - ay)
+            if L > 1e-6:
+                nx, ny = -(by - ay) / L * hw, (bx - ax) / L * hw
+                d.polygon([(tx(ax + nx), ty(ay + ny)), (tx(bx + nx), ty(by + ny)),
+                           (tx(bx - nx), ty(by - ny)), (tx(ax - nx), ty(ay - ny))], fill=255)
+        for cx, cy in seq:   # uniones y puntas redondas
+            d.ellipse([tx(cx - hw), ty(cy - hw), tx(cx + hw), ty(cy + hw)], fill=255)
+
+    fill = outline = None
+    if want_fill and len(pts) >= 3:
+        fill = _supersample(rect, lambda d, tx, ty, s: d.polygon([(tx(x), ty(y)) for x, y in pts], fill=255))
+    if want_outline and len(pts) >= 2:
+        if line_style in (None, "solid"):
+            outline = _supersample(rect, lambda d, tx, ty, s: stroke(d, tx, ty, pts, closed))
+        else:
+            runs = _dash_runs(pts, closed, width, line_style)
+            outline = _supersample(rect, lambda d, tx, ty, s: [stroke(d, tx, ty, r, False) for r in runs] and None)
+    return rect, outline, fill

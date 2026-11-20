@@ -18,7 +18,7 @@ from .qtutil import qimage_from_rgba
 
 MIN_ZOOM, MAX_ZOOM = 0.02, 64.0
 MARGIN = 24
-PAINTING_TOOLS = ("brush", "pencil", "eraser")
+PAINTING_TOOLS = ("brush", "pencil", "eraser", "clone", "recolor")
 
 
 class CanvasView(QAbstractScrollArea):
@@ -154,6 +154,7 @@ class CanvasView(QAbstractScrollArea):
     # Herramienta activa
     # ------------------------------------------------------------------
     def set_tool(self, key: str):
+        self.finish_pending()          # polígono/curva en edición: se confirman al cambiar de herramienta
         self.cancel_gesture()
         self.tool_key = key
         self._apply_cursor()
@@ -181,10 +182,30 @@ class CanvasView(QAbstractScrollArea):
             out.add("alt")
         return frozenset(out)
 
+    def finish_pending(self):
+        """Confirma las ediciones pendientes (polígono, curva) de las herramientas."""
+        for tool in self.tools.values():
+            if tool.pending:
+                self._run(tool.finish)
+                self.viewport().update()
+                self.tool_finished.emit()
+
+    def _cancel_pending(self) -> bool:
+        cancelled = False
+        for tool in self.tools.values():
+            if tool.pending:
+                tool.cancel(self._ctx())
+                cancelled = True
+        if cancelled:
+            self.viewport().update()
+        return cancelled
+
     def handle_escape(self):
-        """Esc: cancela el gesto en curso; si no hay ninguno, anula la selección (como Ctrl+D)."""
+        """Esc: cancela el gesto o la edición pendiente; si no hay ninguno, anula la selección (como Ctrl+D)."""
         if self._active_tool is not None:
             self.cancel_gesture()
+        elif self._cancel_pending():
+            pass
         elif self.session.doc.selection.active:
             try:
                 self.session.deselect()
@@ -240,6 +261,16 @@ class CanvasView(QAbstractScrollArea):
         self._run(tool.press, x, y, "primary" if e.button() == Qt.LeftButton else "secondary", self._mods())
         self.viewport().update()
 
+    def mouseDoubleClickEvent(self, e):
+        if e.button() == Qt.LeftButton and any(t.pending for t in self.tools.values()):
+            self.finish_pending()
+        else:
+            super().mouseDoubleClickEvent(e)
+
+    def hideEvent(self, e):
+        self.finish_pending()          # al cambiar de pestaña no queda nada pendiente en este documento
+        super().hideEvent(e)
+
     def mouseMoveEvent(self, e):
         x, y = self.to_image(e.pos())
         self._mouse_img = (x, y)
@@ -289,6 +320,8 @@ class CanvasView(QAbstractScrollArea):
             self._apply_cursor()
         elif e.key() == Qt.Key_Escape:
             self.handle_escape()
+        elif e.key() in (Qt.Key_Return, Qt.Key_Enter) and any(t.pending for t in self.tools.values()):
+            self.finish_pending()
         else:
             super().keyPressEvent(e)
 
@@ -396,6 +429,18 @@ class CanvasView(QAbstractScrollArea):
             elif ov["type"] == "line":
                 a, b = self._to_screen(*ov["p0"]), self._to_screen(*ov["p1"])
                 dashed(lambda: p.drawLine(a, b))
+            elif ov["type"] == "nodes":          # nodos de polígono/curva: cuadritos agarrables
+                for pt in ov["points"]:
+                    c = self._to_screen(*pt)
+                    p.setBrush(QColor(255, 255, 255))
+                    p.setPen(QPen(QColor(0, 0, 0), 1))
+                    p.drawRect(QRectF(c.x() - 4, c.y() - 4, 8, 8))
+            elif ov["type"] == "cross":          # origen del tampón de clonar
+                c = self._to_screen(*ov["p"])
+                for color, wd in ((QColor(255, 255, 255), 3), (QColor(0, 0, 0), 1)):
+                    p.setPen(QPen(color, wd))
+                    p.drawLine(QPointF(c.x() - 8, c.y()), QPointF(c.x() + 8, c.y()))
+                    p.drawLine(QPointF(c.x(), c.y() - 8), QPointF(c.x(), c.y() + 8))
         if self.tool_key in PAINTING_TOOLS and self._mouse_img is not None and self._pan_last is None:
             c = self._to_screen(*self._mouse_img)
             r = max(1.5, self.options.size * self.zoom / 2)

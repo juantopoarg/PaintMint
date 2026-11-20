@@ -186,7 +186,7 @@ class GradientSlider(QWidget):
 class ColorWheel(QWidget):
     """Rueda de tono (ángulo) y saturación (radio), con valor 100 %."""
 
-    changed = pyqtSignal(int, int)   # (tono 0-359, saturación 0-100)
+    picked = pyqtSignal(int, int, str)   # (tono 0-359, saturación 0-100, botón: "left" | "right")
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -257,7 +257,7 @@ class ColorWheel(QWidget):
         p.setPen(QPen(QColor(255, 255, 255), 1))
         p.drawEllipse(QPointF(mx, my), 6.5, 6.5)
 
-    def _pick(self, pos) -> None:
+    def _pick(self, pos, button: str) -> None:
         import math
         cx, cy, r = self._geometry()
         dx, dy = pos.x() - cx, cy - pos.y()
@@ -266,15 +266,20 @@ class ColorWheel(QWidget):
         s = int(round(100.0 * dist / max(1.0, r)))
         self._h, self._s = h, s
         self.update()
-        self.changed.emit(h, s)
+        self.picked.emit(h, s, button)
 
     def mousePressEvent(self, e):
-        if e.button() == Qt.LeftButton:
-            self._pick(e.pos())
+        if e.button() in (Qt.LeftButton, Qt.RightButton):
+            self._pick(e.pos(), "left" if e.button() == Qt.LeftButton else "right")
 
     def mouseMoveEvent(self, e):
         if e.buttons() & Qt.LeftButton:
-            self._pick(e.pos())
+            self._pick(e.pos(), "left")
+        elif e.buttons() & Qt.RightButton:
+            self._pick(e.pos(), "right")
+
+    def contextMenuEvent(self, e):      # el clic derecho elige el secundario, no abre menús
+        e.accept()
 
 
 # -- par primario / secundario --------------------------------------------------------------------

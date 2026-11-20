@@ -33,12 +33,13 @@ SHORTCUTS = {"levels": "Ctrl+L", "curves": "Ctrl+Shift+M", "hue_saturation": "Ct
 TOOL_KEYS = {"select_rect": "S", "select_ellipse": "Shift+S", "select_lasso": "L", "select_wand": "W",
              "move": "M", "move_selection": "Shift+M", "brush": "B", "pencil": "P", "eraser": "E", "fill": "F",
              "gradient": "G", "line": "I", "rectangle": "O", "rounded_rectangle": "Shift+O", "ellipse": "J",
-             "text": "T", "picker": "K", "zoom": "Z", "pan": "H"}
+             "text": "T", "picker": "K", "zoom": "Z", "pan": "H", "clone": "C", "recolor": "R", "curve": "Shift+I",
+             "freeform": "Shift+F", "polygon": "Shift+P"}
 # filas de dos botones; None = hueco
 TOOLBOX_LAYOUT = [   # una sola columna, en el orden de Paint.NET
     "select_rect", "move", "zoom", "move_selection", "select_lasso", "pan", "select_ellipse",
-    "select_wand", "fill", "gradient", "brush", "eraser", "pencil", "picker", "text", "line",
-    "rectangle", "rounded_rectangle", "ellipse",
+    "select_wand", "fill", "gradient", "brush", "eraser", "pencil", "picker", "clone", "recolor", "text",
+    "line", "curve", "rectangle", "rounded_rectangle", "ellipse", "freeform", "polygon",
 ]
 ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 MAX_RECENT = 10
@@ -355,7 +356,14 @@ class MainWindow(QMainWindow):
         v = self.current_view()
         return v.session if v else None
 
+    def _finish_pending(self):
+        """Confirma una edición pendiente (polígono, curva) antes de operar sobre el documento."""
+        v = self.current_view()
+        if v is not None:
+            v.finish_pending()
+
     def session_do(self, fn):
+        self._finish_pending()
         s = self.current_session()
         if s is None:
             return None
@@ -527,6 +535,7 @@ class MainWindow(QMainWindow):
         return None
 
     def act_save(self):
+        self._finish_pending()
         v = self.current_view()
         if v is None:
             return
@@ -731,9 +740,11 @@ class MainWindow(QMainWindow):
     # Edición
     # ------------------------------------------------------------------
     def act_undo(self):
+        self._finish_pending()
         self.session_do(lambda s: s.undo())
 
     def act_redo(self):
+        self._finish_pending()
         self.session_do(lambda s: s.redo())
 
     def _copy_to_clipboard(self, data):

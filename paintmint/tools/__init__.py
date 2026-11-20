@@ -3,6 +3,8 @@
 from .base import Tool, ToolContext, ToolOptions  # noqa: F401
 from .paint import (BrushTool, ColorPickerTool, EllipseTool, EraserTool, FillTool, GradientTool,  # noqa: F401
                     LineTool, PencilTool, RectangleTool, RoundedRectangleTool, ShapeTool)
+from .path import CurveTool, FreeformShapeTool, PolygonTool  # noqa: F401
+from .retouch import CloneStampTool, RecolorTool  # noqa: F401
 from .select import (EllipseSelectTool, LassoSelectTool, MoveSelectedTool, MoveSelectionTool,  # noqa: F401
                      RectSelectTool, WandSelectTool)
 from .text import TextTool  # noqa: F401
@@ -10,7 +12,8 @@ from .text import TextTool  # noqa: F401
 TOOL_CLASSES = [
     RectSelectTool, EllipseSelectTool, LassoSelectTool, WandSelectTool, MoveSelectedTool, MoveSelectionTool,
     BrushTool, PencilTool, EraserTool, FillTool, GradientTool, ShapeTool, LineTool, RectangleTool,
-    RoundedRectangleTool, EllipseTool, TextTool, ColorPickerTool,
+    RoundedRectangleTool, EllipseTool, TextTool, ColorPickerTool, CloneStampTool, RecolorTool, CurveTool,
+    FreeformShapeTool, PolygonTool,
 ]
 
 
