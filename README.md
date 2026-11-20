@@ -39,6 +39,13 @@ Tested with Python 3.13; the syntax is checked to be compatible with Python ≥ 
 
 You can also drag files onto the window. Each image opens in its own tab.
 
+## Panels and startup
+
+- PaintMint starts with a **blank white canvas** using the size of the last canvas you worked with (new image, resize or canvas size; 800×600 the first time).
+- Colors, History, Layers and Text live in one column on the right. Each panel can be **collapsed** inside the column (▾/▸ button or double-click on its title), **floated** (⧉) or closed (✕; reopen from the *View* menu). The Text panel opens by itself when you pick the Text tool.
+- *View ▸ Floating panels (Paint.NET layout)* floats every panel over the canvas like Paint.NET (Tools top-left, History top-right, Colors bottom-left, Layers bottom-right); *View ▸ Reset panel layout* docks them again. *View ▸ Maximize window* (F11) toggles maximize.
+- **File ▸ New** has a *Maintain aspect ratio* lock so width and height change together.
+
 ## Language
 
 English is the default. Choose *Help ▸ Language ▸ Español* (or *English*) and restart the application.
@@ -75,7 +82,7 @@ Sliders (with numeric boxes) are also used for **size, hardness, opacity and the
 ```
 
 No display needed (Qt in `offscreen` mode) and no network (the updater tests use a fake downloader). Currently
-**234 tests pass**; 3 file-permission tests are skipped when running as `root` (root ignores permissions) and pass as a normal user.
+**246 tests pass**; 3 file-permission tests are skipped when running as `root` (root ignores permissions) and pass as a normal user.
 
 | File | Covers |
 |---|---|
@@ -149,11 +156,12 @@ Every error path produces a `PaintMintError` with a user-facing message; the UI 
 | Adjustments | brightness/contrast, levels, curves (interactive editor), hue/saturation, invert, black and white, sepia, posterize — all with preview |
 | Effects | Gaussian blur, sharpen, pixelate, noise — with preview |
 | Image | resize (4 methods), canvas size with anchor, flip, rotate 90/180/270, crop |
-| Editing | unlimited undo/redo + navigable history panel, copy/cut/paste (also "paste into new image"), delete/fill selection |
+| Editing | unlimited undo/redo + navigable history panel, copy/cut/paste (also "paste into new image"; pasting something **larger than the canvas asks whether to expand the canvas or keep its size**, like Paint.NET), delete/fill selection |
 | Colors | **Paint.NET-style Colors window** (wheel, RGB/HSV/Hex/Alpha, large palette with custom colors) |
 | Interface | **single-column** icon-only toolbox (Paint.NET order), **per-tool mouse cursor**, app icon: paint brush with a mint leaf, **English/Spanish**, About dialog with repo link and donation |
 | View | zoom 2 %–6400 % (Ctrl+wheel, shortcuts), fit to window, pan with Space/middle button/Pan tool, transparency checkerboard, marching-ants selection |
 | Files | PNG, JPG (quality), BMP, GIF (1-bit transparency), TIFF (LZW), **ORA** (OpenRaster: keeps layers, text and modes), tabs, recent files, drag and drop |
+| Window | maximize/minimize buttons, **collapsible panels** (▾/▸ or double-click the title) in a single right-hand column, panels can **float** (⧉) or close (✕), *View ▸ Floating panels (Paint.NET layout)* floats them all over the canvas, *Reset panel layout*, blank white canvas on startup with the last canvas size |
 | Updates | check GitHub for new versions, confirmed install (git pull or validated ZIP) |
 
 **Pending / out of scope (with reason)**
@@ -184,7 +192,7 @@ Selection modifiers: `Ctrl` add · `Alt` subtract · `Ctrl+Alt` intersect · `Sh
 ## Steps to verify on Linux Mint
 
 1. `./scripts/install_deps.sh` finishes with "All good."
-2. `./scripts/run_tests.sh` → all green (234 passed).
+2. `./scripts/run_tests.sh` → all green (246 passed).
 3. `./paintmint.sh` opens the window in English. **File ▸ New** (800×600, white background).
 4. Brush (`B`): draw a stroke → `Ctrl+Z` removes it, `Ctrl+Y` brings it back.
 5. **Layers ▸ New layer**; draw on it; lower its opacity with the slider in the *Layers* panel; hide it with its checkbox.
@@ -194,8 +202,9 @@ Selection modifiers: `Ctrl` add · `Alt` subtract · `Ctrl+Alt` intersect · `Sh
 9. **File ▸ Save as…** to `.png`, `.jpg`, `.bmp`, `.gif`, `.tif` and `.ora`; close and reopen them.
 10. Esc with an active selection clears it; Ctrl+J creates a new layer from the selection; the cursor changes with each tool.
 11. Magic wand (`W`): the tolerance is a slider. Open the **Colors** window: wheel, R/G/B/H/S/V/Alpha sliders, Hex field and the palette all update the primary/secondary colors.
-12. **Help ▸ Language ▸ Español**, restart → Spanish UI. **Help ▸ About** shows the repo link and the donation button. **Help ▸ Check for updates…** reports the version status.
-13. Errors: open a text file renamed to `.png` → a "not a valid image or is damaged" warning appears and the app stays open; save into a folder without permission (e.g. `/`) → a permission warning.
+12. Paste an image bigger than the canvas (Ctrl+V): you are asked to expand the canvas or keep its size. Collapse/float the right-hand panels. Restart: a white canvas with the last size opens.
+13. **Help ▸ Language ▸ Español**, restart → Spanish UI. **Help ▸ About** shows the repo link and the donation button. **Help ▸ Check for updates…** reports the version status.
+14. Errors: open a text file renamed to `.png` → a "not a valid image or is damaged" warning appears and the app stays open; save into a folder without permission (e.g. `/`) → a permission warning.
 
 ## Links
 

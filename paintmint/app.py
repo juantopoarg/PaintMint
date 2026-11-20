@@ -22,6 +22,6 @@ def main(argv=None) -> int:
     app.setDesktopFileName("paintmint")   # asocia la ventana con paintmint.desktop (icono en la barra de tareas)
     app.setWindowIcon(app_icon())
     install_excepthook()
-    win = MainWindow(files=[a for a in argv[1:] if not a.startswith("-")])
+    win = MainWindow(files=[a for a in argv[1:] if not a.startswith("-")], open_blank=True)
     win.show()
     return app.exec_()

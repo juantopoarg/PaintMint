@@ -23,6 +23,7 @@ from .canvas import CanvasView
 from .dialogs import CanvasSizeDialog, EffectDialog, LayerPropertiesDialog, NewImageDialog, ResizeDialog
 from .icons import tool_icon
 from .about import AboutDialog
+from .docks import QWIDGETSIZE_MAX,  is_collapsed, set_collapsed, setup_dock, wrap_scroll
 from .update_ui import UpdateController
 from .panels import ColorsPanel, HistoryPanel, LayersPanel, TextPanel, ToolOptionsBar
 from .qtutil import guarded, qimage_from_rgba, rgba_from_qimage, show_error
@@ -54,7 +55,7 @@ def app_icon() -> QIcon:
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, files=()):
+    def __init__(self, files=(), open_blank=False):
         super().__init__()
         self.settings = QSettings("PaintMint", "PaintMint")
         self.options = ToolOptions()
@@ -65,6 +66,9 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(app_icon())
         self.resize(1280, 800)
         self.setAcceptDrops(True)
+        # botones de minimizar y maximizar siempre disponibles
+        self.setWindowFlags(self.windowFlags() | Qt.WindowMinMaxButtonsHint)
+        self.setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX)
 
         self.tabs = QTabWidget()
         self.tabs.setTabsClosable(True)
@@ -87,6 +91,8 @@ class MainWindow(QMainWindow):
             self.open_path(path)
         if not files:
             self.settings_restore()
+        if open_blank and not files:
+            self.open_blank_canvas()
         QTimer.singleShot(4000, self._auto_check_updates)   # en segundo plano, sin bloquear el arranque
 
     # ------------------------------------------------------------------
@@ -97,6 +103,7 @@ class MainWindow(QMainWindow):
         d.setObjectName(name)
         d.setWidget(widget)
         self.addDockWidget(area, d)
+        setup_dock(d)
         return d
 
     def _build_docks(self):
@@ -104,12 +111,13 @@ class MainWindow(QMainWindow):
         self.layers_panel = LayersPanel()
         self.history_panel = HistoryPanel()
         self.text_panel = TextPanel(self.options)
-        self.colors_dock = self._dock(tr('Colors'), self.colors_panel, Qt.RightDockWidgetArea, "colors")
-        self.text_dock = self._dock(tr('Text'), self.text_panel, Qt.RightDockWidgetArea, "text")
-        self.layers_dock = self._dock(tr('Layers'), self.layers_panel, Qt.RightDockWidgetArea, "layers")
+        # una columna a la derecha con los cuatro paneles; cada uno se puede colapsar, flotar o cerrar
+        self.colors_dock = self._dock(tr('Colors'), wrap_scroll(self.colors_panel), Qt.RightDockWidgetArea, "colors")
         self.history_dock = self._dock(tr('History'), self.history_panel, Qt.RightDockWidgetArea, "history")
-        self.tabifyDockWidget(self.text_dock, self.history_dock)
-        self.text_dock.raise_()
+        self.layers_dock = self._dock(tr('Layers'), self.layers_panel, Qt.RightDockWidgetArea, "layers")
+        self.text_dock = self._dock(tr('Text'), wrap_scroll(self.text_panel), Qt.RightDockWidgetArea, "text")
+        set_collapsed(self.text_dock, True)          # se despliega al elegir la herramienta Texto
+        self.resizeDocks([self.colors_dock, self.history_dock, self.layers_dock], [360, 110, 220], Qt.Vertical)
         lp = self.layers_panel.buttons
         lp["add"].clicked.connect(lambda: self.act_add_layer())
         lp["dup"].clicked.connect(lambda: self.act_duplicate_layer())
@@ -237,6 +245,13 @@ class MainWindow(QMainWindow):
         m.addSeparator()
         for d in (self.toolbox_dock, self.colors_dock, self.text_dock, self.layers_dock, self.history_dock):
             m.addAction(d.toggleViewAction())
+        m.addSeparator()
+        self.a_float_panels = QAction(tr('&Floating panels (Paint.NET layout)'), self, checkable=True)
+        self.a_float_panels.toggled.connect(lambda on: self._safe(lambda: self.set_floating_panels(on)))
+        self.a_reset_panels = QAction(tr('&Reset panel layout'), self, triggered=lambda: self._safe(self.reset_panels))
+        self.a_maximize = QAction(tr('&Maximize window'), self, checkable=True, shortcut=QKeySequence("F11"))
+        self.a_maximize.toggled.connect(lambda on: self.showMaximized() if on else self.showNormal())
+        m.addActions([self.a_float_panels, self.a_reset_panels, self.a_maximize])
         m = mb.addMenu(tr('&Image'))
         m.addActions([self.a_crop, self.a_resize, self.a_canvas])
         m.addSeparator()
@@ -311,7 +326,6 @@ class MainWindow(QMainWindow):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setMinimumWidth(60)
         dock = self._dock(tr('Tools'), scroll, Qt.LeftDockWidgetArea, "toolbox")
-        dock.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable)
         self.toolbox_dock = dock
 
     def _build_statusbar(self):
@@ -441,6 +455,8 @@ class MainWindow(QMainWindow):
         self.tool_key = key
         self.tool_actions[key].setChecked(True)
         self.options_bar.show_for(key)
+        if key == "text" and is_collapsed(self.text_dock):
+            set_collapsed(self.text_dock, False)
         for i in range(self.tabs.count()):
             w = self.tabs.widget(i)
             if isinstance(w, CanvasView):
@@ -450,12 +466,24 @@ class MainWindow(QMainWindow):
     # Archivo
     # ------------------------------------------------------------------
     def act_new(self):
-        dlg = NewImageDialog(self)
+        dlg = NewImageDialog(self, tuple(config.get("last_canvas")))
         if dlg.exec_() != dlg.Accepted:
             return
         w, h, bg = dlg.values()
         fill = [(255, 255, 255, 255), (0, 0, 0, 0), self.options.primary, self.options.secondary][bg]
         self.add_document(Document(w, h, fill))
+        self._remember_canvas(w, h)
+
+    def _remember_canvas(self, w, h):
+        config.set_value("last_canvas", [int(w), int(h)])
+
+    def open_blank_canvas(self):
+        """Documento en blanco con el último tamaño de lienzo usado (por defecto 800×600)."""
+        w, h = config.get("last_canvas")
+        try:
+            self.add_document(Document(w, h))
+        except (Exception, MemoryError):   # si el tamaño guardado ya no cabe, se usa el estándar
+            self.add_document(Document(800, 600))
 
     def act_open(self):
         start = self.settings.value("last_dir", os.path.expanduser("~"))
@@ -575,6 +603,52 @@ class MainWindow(QMainWindow):
         w.deleteLater()
         return True
 
+    def changeEvent(self, e):
+        if e.type() == e.WindowStateChange and hasattr(self, "a_maximize"):
+            self.a_maximize.blockSignals(True)
+            self.a_maximize.setChecked(self.isMaximized())
+            self.a_maximize.blockSignals(False)
+        super().changeEvent(e)
+
+    # -- disposición de los paneles -------------------------------------------------
+    def _panel_docks(self):
+        return [self.toolbox_dock, self.colors_dock, self.history_dock, self.layers_dock, self.text_dock]
+
+    def set_floating_panels(self, on: bool):
+        """Activa la disposición de Paint.NET (paneles flotando sobre el lienzo) o los acopla de nuevo."""
+        if not on:
+            self.reset_panels(keep_flag=True)
+            return
+        area = self.centralWidget()
+        tl = area.mapToGlobal(area.rect().topLeft())
+        w, h = area.width(), area.height()
+        # (dock, ancho, alto, esquina)
+        spec = [(self.toolbox_dock, 76, min(h - 16, 560), "tl"), (self.history_dock, 220, 180, "tr"),
+                (self.colors_dock, 260, 250, "bl"), (self.layers_dock, 240, 220, "br"),
+                (self.text_dock, 260, 40, "tr2")]
+        self.colors_panel.more_btn.setChecked(False)          # como Paint.NET: «Menos» al flotar
+        for dock, dw, dh, corner in spec:
+            dock.show()
+            dock.setFloating(True)
+            dock.resize(dw, dh)
+            x = tl.x() + (8 if corner in ("tl", "bl") else w - dw - 8)
+            y = tl.y() + (8 if corner in ("tl", "tr") else h - dh - 8 if corner in ("bl", "br") else 240)
+            dock.move(x, y)
+
+    def reset_panels(self, keep_flag=False):
+        for d in self._panel_docks():
+            d.setFloating(False)
+            d.show()
+            set_collapsed(d, d is self.text_dock)
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.toolbox_dock)
+        for d in (self.colors_dock, self.history_dock, self.layers_dock, self.text_dock):
+            self.addDockWidget(Qt.RightDockWidgetArea, d)
+        self.colors_panel.more_btn.setChecked(True)
+        if not keep_flag:
+            self.a_float_panels.blockSignals(True)
+            self.a_float_panels.setChecked(False)
+            self.a_float_panels.blockSignals(False)
+
     def closeEvent(self, e):
         while self.tabs.count():
             if not self._tab_close_requested(self.tabs.count() - 1):
@@ -582,6 +656,7 @@ class MainWindow(QMainWindow):
                 return
         self.settings.setValue("geometry", self.saveGeometry())
         self.settings.setValue("state", self.saveState())
+        self.settings.setValue("collapsed", [d.objectName() for d in self._panel_docks() if is_collapsed(d)])
         e.accept()
 
     def settings_restore(self):
@@ -590,6 +665,11 @@ class MainWindow(QMainWindow):
             self.restoreGeometry(g)
         if s is not None:
             self.restoreState(s)
+        collapsed = self.settings.value("collapsed")
+        if collapsed is not None:
+            collapsed = [collapsed] if isinstance(collapsed, str) else list(collapsed)
+            for d in self._panel_docks():
+                set_collapsed(d, d.objectName() in collapsed)
 
     # -- recientes -------------------------------------------------------
     def _recent(self):
@@ -657,8 +737,32 @@ class MainWindow(QMainWindow):
         ox, oy = v._origin()
         x = max(0, int((0 - ox) / v.zoom)) if ox < 0 else 0
         y = max(0, int((0 - oy) / v.zoom)) if oy < 0 else 0
-        s.paste_pixels(rgba_from_qimage(img), (x, y))
+        rgba = rgba_from_qimage(img)
+        ph, pw = rgba.shape[:2]
+        if pw > s.doc.width or ph > s.doc.height:
+            choice = self._ask_paste_oversize(pw, ph, s.doc.width, s.doc.height)
+            if choice is None:
+                return                                   # cancelado: no se hace nada
+            if choice == "expand":
+                s.resize_canvas(max(pw, s.doc.width), max(ph, s.doc.height), "tl")
+                self._remember_canvas(s.doc.width, s.doc.height)
+                x = y = 0
+        s.paste_pixels(rgba, (x, y))
         self.select_tool("move")
+
+    def _ask_paste_oversize(self, pw, ph, cw, ch):
+        """Como Paint.NET: «expandir el lienzo» o «mantener el tamaño». Devuelve 'expand', 'keep' o None."""
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Question)
+        box.setWindowTitle(tr('Paste'))
+        box.setText(tr('The image you are pasting ({pw} × {ph}) is larger than the canvas ({cw} × {ch}).\n'
+                       'What would you like to do?').format(pw=pw, ph=ph, cw=cw, ch=ch))
+        expand = box.addButton(tr('Expand canvas'), QMessageBox.AcceptRole)
+        keep = box.addButton(tr('Keep canvas size'), QMessageBox.AcceptRole)
+        box.addButton(QMessageBox.Cancel)
+        box.exec_()
+        clicked = box.clickedButton()
+        return "expand" if clicked is expand else "keep" if clicked is keep else None
 
     def act_paste_new_image(self):
         img = QApplication.clipboard().image()
@@ -685,6 +789,7 @@ class MainWindow(QMainWindow):
         if dlg.exec_() == dlg.Accepted:
             w, h, m = dlg.values()
             self._busy(lambda: s.resize_image(w, h, m))
+            self._remember_canvas(s.doc.width, s.doc.height)
 
     def act_canvas_size(self):
         s = self.current_session()
@@ -694,6 +799,7 @@ class MainWindow(QMainWindow):
         if dlg.exec_() == dlg.Accepted:
             w, h, a = dlg.values()
             self._busy(lambda: s.resize_canvas(w, h, a))
+            self._remember_canvas(s.doc.width, s.doc.height)
 
     def _busy(self, fn):
         QApplication.setOverrideCursor(Qt.WaitCursor)

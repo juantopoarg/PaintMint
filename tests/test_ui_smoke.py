@@ -417,3 +417,151 @@ def test_language_menu_saves_choice(win, monkeypatch):
     assert config.get("language") == "es" and shown
     win.act_set_language("en")
     assert config.get("language") == "en"
+
+
+# ---------------------------------------------------------------- v1.3: ventana, paneles, lienzo inicial, pegado
+def test_window_has_min_max_buttons_and_can_maximize(win):
+    from PyQt5.QtCore import Qt as _Qt
+    assert win.windowFlags() & _Qt.WindowMaximizeButtonHint and win.windowFlags() & _Qt.WindowMinimizeButtonHint
+    # la altura mínima debe caber en una pantalla modesta; si no, el gestor de ventanas oculta «Maximizar»
+    assert win.minimumSizeHint().height() <= 700
+    assert win.maximumSize().width() >= 16777215
+    win.a_maximize.setChecked(True)
+    win.a_maximize.setChecked(False)
+
+
+def test_right_column_panels_collapse_and_expand(win):
+    from paintmint.ui.docks import is_collapsed, set_collapsed
+    for dock in (win.colors_dock, win.history_dock, win.layers_dock):
+        assert not is_collapsed(dock)
+        full = dock.maximumHeight()
+        set_collapsed(dock, True)
+        assert is_collapsed(dock) and not dock.widget().isVisibleTo(dock) and dock.maximumHeight() < 60
+        set_collapsed(dock, False)
+        assert not is_collapsed(dock) and dock.maximumHeight() >= full
+
+
+def test_text_panel_starts_collapsed_and_opens_with_text_tool(win):
+    from paintmint.ui.docks import is_collapsed
+    assert is_collapsed(win.text_dock)
+    win.select_tool("text")
+    assert not is_collapsed(win.text_dock)
+
+
+def test_title_bar_buttons_float_and_close(win):
+    bar = win.layers_dock.titleBarWidget()
+    bar.collapse_btn.click()
+    from paintmint.ui.docks import is_collapsed
+    assert is_collapsed(win.layers_dock)
+    bar.float_btn.click()
+    assert win.layers_dock.isFloating()
+    bar.float_btn.click()
+    assert not win.layers_dock.isFloating()
+
+
+def test_paintnet_floating_layout_and_reset(win):
+    win.a_float_panels.setChecked(True)
+    assert all(d.isFloating() for d in win._panel_docks())
+    win.a_float_panels.setChecked(False)
+    assert not any(d.isFloating() for d in win._panel_docks())
+    win.a_float_panels.setChecked(True)
+    win.a_reset_panels.trigger()
+    assert not any(d.isFloating() for d in win._panel_docks()) and not win.a_float_panels.isChecked()
+
+
+def test_startup_opens_blank_canvas_with_last_size(app, monkeypatch, tmp_path):
+    from paintmint import config
+    from paintmint.ui import main_window
+    from PyQt5.QtCore import QSettings
+    QSettings.setPath(QSettings.NativeFormat, QSettings.UserScope, str(tmp_path))
+    config.set_value("last_canvas", [321, 123])
+    w = main_window.MainWindow(open_blank=True)
+    try:
+        assert w.tabs.count() == 1
+        doc = w.current_session().doc
+        assert (doc.width, doc.height) == (321, 123) and not w.current_session().history.modified
+        assert doc.layers[0].pixels[0, 0].tolist() == [255, 255, 255, 255]
+    finally:
+        w.close()
+    w2 = main_window.MainWindow(files=[], open_blank=False)
+    assert w2.tabs.count() == 0
+    w2.close()
+
+
+def test_last_canvas_size_is_remembered_and_validated(win, tmp_path):
+    from paintmint import config
+    win.add_document(Document(50, 40))
+    win._remember_canvas(77, 66)
+    assert config.get("last_canvas") == [77, 66]
+    config.set_value("last_canvas", [0, "x"])           # configuración dañada -> valor por defecto
+    assert config.get("last_canvas") == [800, 600]
+
+
+def test_new_image_dialog_locks_aspect_ratio():
+    from paintmint.ui.dialogs import NewImageDialog
+    d = NewImageDialog(None, (800, 600))
+    assert d.keep_ratio.isChecked()
+    d.w.setValue(1600)
+    assert d.h.value() == 1200
+    d.h.setValue(300)
+    assert d.w.value() == 400
+    d.keep_ratio.setChecked(False)
+    d.w.setValue(1000)
+    assert d.h.value() == 300                            # sin bloqueo se mueven por separado
+    d.keep_ratio.setChecked(True)                        # se bloquea la proporción actual (1000:300)
+    d.w.setValue(500)
+    assert d.h.value() == 150
+    d.preset.setCurrentIndex(3)                          # 1280×720 y la proporción pasa a 16:9
+    assert (d.w.value(), d.h.value()) == (1280, 720)
+    d.w.setValue(640)
+    assert d.h.value() == 360
+
+
+def _clipboard_image(w, h, color=(10, 200, 30, 255)):
+    from PyQt5.QtGui import QColor, QImage
+    from PyQt5.QtWidgets import QApplication
+    img = QImage(w, h, QImage.Format_ARGB32)
+    img.fill(QColor(*color))
+    QApplication.clipboard().setImage(img)
+
+
+def test_paste_larger_than_canvas_expand(win, monkeypatch):
+    view = win.add_document(Document(100, 80))
+    s = view.session
+    _clipboard_image(150, 60)
+    asked = []
+    monkeypatch.setattr(win, "_ask_paste_oversize", lambda *a: asked.append(a) or "expand")
+    win.act_paste()
+    assert asked == [(150, 60, 100, 80)]
+    assert (s.doc.width, s.doc.height) == (150, 80)
+    assert s.active_layer.pixels[0, 149, 1] == 200 and s.active_layer.pixels[59, 0, 1] == 200
+    assert not win.errors
+
+
+def test_paste_larger_than_canvas_keep_size_crops(win, monkeypatch):
+    view = win.add_document(Document(100, 80))
+    s = view.session
+    _clipboard_image(150, 120)
+    monkeypatch.setattr(win, "_ask_paste_oversize", lambda *a: "keep")
+    win.act_paste()
+    assert (s.doc.width, s.doc.height) == (100, 80)
+    assert s.active_layer.pixels[79, 99, 1] == 200
+
+
+def test_paste_larger_than_canvas_cancel_changes_nothing(win, monkeypatch):
+    view = win.add_document(Document(100, 80))
+    s = view.session
+    n = len(s.doc.layers)
+    pos = s.history.position
+    _clipboard_image(150, 120)
+    monkeypatch.setattr(win, "_ask_paste_oversize", lambda *a: None)
+    win.act_paste()
+    assert (s.doc.width, s.doc.height) == (100, 80) and len(s.doc.layers) == n and s.history.position == pos
+
+
+def test_paste_that_fits_does_not_ask(win, monkeypatch):
+    view = win.add_document(Document(100, 80))
+    _clipboard_image(50, 40)
+    monkeypatch.setattr(win, "_ask_paste_oversize", lambda *a: pytest.fail("no debe preguntar"))
+    win.act_paste()
+    assert len(view.session.doc.layers) == 2

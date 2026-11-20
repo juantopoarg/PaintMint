@@ -14,6 +14,7 @@ DEFAULTS = {
     "language": "en",            # "en" | "es"
     "check_updates": True,       # comprobar actualizaciones al iniciar
     "last_update_check": 0.0,    # marca de tiempo UNIX de la última comprobación
+    "last_canvas": [800, 600],   # último tamaño de lienzo usado (ancho, alto)
     "custom_colors": [],         # colores añadidos a la paleta por el usuario: [[r,g,b,a], ...]
 }
 
@@ -32,6 +33,10 @@ def load() -> dict:
             data.update({k: v for k, v in stored.items() if k in DEFAULTS})
     except (OSError, ValueError):
         pass  # sin archivo o dañado: se usan los valores por defecto
+    lc = data.get("last_canvas")
+    if not (isinstance(lc, (list, tuple)) and len(lc) == 2 and all(isinstance(v, int) and not isinstance(v, bool)
+                                                                       and 1 <= v <= 32768 for v in lc)):
+        data["last_canvas"] = list(DEFAULTS["last_canvas"])
     return data
 
 

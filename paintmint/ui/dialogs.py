@@ -46,15 +46,41 @@ class NewImageDialog(QDialog):
         form.addRow(tr('Preset size:'), self.preset)
         form.addRow(tr('Width (px):'), self.w)
         form.addRow(tr('Height (px):'), self.h)
+        self.keep_ratio = QCheckBox(tr('Maintain aspect ratio'))
+        self.keep_ratio.setChecked(True)
+        form.addRow("", self.keep_ratio)
         form.addRow(tr('Background:'), self.bg)
         form.addRow(_buttons(self))
+        self._ratio = size[0] / float(size[1])
+        self._busy = False
         self.preset.currentIndexChanged.connect(self._preset)
+        self.w.valueChanged.connect(lambda v: self._linked(self.w, self.h, 1.0 / self._ratio))
+        self.h.valueChanged.connect(lambda v: self._linked(self.h, self.w, self._ratio))
+        self.keep_ratio.toggled.connect(self._lock_toggled)
+
+    def _lock_toggled(self, on):
+        if on and self.h.value():
+            self._ratio = self.w.value() / float(self.h.value())   # se bloquea la proporción actual
+
+    def _linked(self, src, dst, factor):
+        """Con la proporción bloqueada, al cambiar un lado el otro se ajusta (se respeta el máximo)."""
+        if self._busy:
+            return
+        if self.keep_ratio.isChecked():
+            self._busy = True
+            dst.setValue(max(1, int(round(src.value() * factor))))
+            self._busy = False
+        elif self.h.value():
+            self._ratio = self.w.value() / float(self.h.value())
 
     def _preset(self, i):
         size = self.PRESETS[i][1]
         if size:
+            self._busy = True
             self.w.setValue(size[0])
             self.h.setValue(size[1])
+            self._busy = False
+            self._ratio = size[0] / float(size[1])
 
     def values(self):
         return self.w.value(), self.h.value(), self.bg.currentIndex()
