@@ -15,7 +15,8 @@ from ..core.blend import BLEND_MODES
 from ..core.errors import PaintMintError
 from ..core.layer import TextSpec
 from ..render.raster import GRADIENT_KINDS, HATCH_STYLES, LINE_STYLES, SHAPE_KINDS
-from .colorwidgets import ColorWheel, GradientSlider, PaletteGrid, SliderSpin, SwatchPair, hsv_to_rgb, rgb_to_hsv
+from .colorwidgets import ColorWheel, fit_spin, GradientSlider, PaletteGrid, SliderSpin, SwatchPair, hsv_to_rgb, rgb_to_hsv
+from .icons import option_icon
 from .qtutil import color_tuple, guarded, pixmap_from_rgba, qcolor, show_error
 
 
@@ -214,7 +215,7 @@ class ColorsPanel(QWidget):
         self.target_combo.addItem(tr('Secondary'), "secondary")
         self.more_btn = QPushButton()
         self.more_btn.setCheckable(True)
-        self.more_btn.setChecked(True)
+        self.more_btn.setChecked(bool(config.get("colors_more")))     # por defecto: versión simplificada
         top.addWidget(self.target_combo, 1)
         top.addWidget(self.more_btn)
         lay.addLayout(top)
@@ -296,7 +297,7 @@ class ColorsPanel(QWidget):
         self.swap.clicked.connect(options.swap_colors)
         self.reset.clicked.connect(self._reset)
         options.listeners.append(self.sync)
-        self._toggle_details(True)
+        self._toggle_details(self.more_btn.isChecked())
         self.sync()
 
     # -- estado ------------------------------------------------------------------
@@ -314,6 +315,7 @@ class ColorsPanel(QWidget):
         self.set_target(self.target_combo.currentData())
 
     def _toggle_details(self, more):
+        config.set_value("colors_more", bool(more))
         self.details.setVisible(more)
         self.more_btn.setText(tr('<< Less') if more else tr('More >>'))
 
@@ -553,19 +555,33 @@ TOOL_OPTIONS = {
     "pencil": {"size", "opacity", "blend"},
     "eraser": {"size", "hardness", "opacity", "aa"},
     "fill": {"fill_style", "tolerance", "contiguous", "sample", "opacity", "blend"},
-    "clone": {"size", "hardness", "opacity", "aa"},
+    "clone": {"hint", "size", "hardness", "opacity", "aa"},
     "recolor": {"size", "hardness", "tolerance", "opacity", "aa"},
     "gradient": {"gradient", "opacity"},
     "shape": {"shape", "shape_mode", "size", "fill_style", "line_style", "aa", "blend", "opacity", "radius"},
     "move_selection": set(),
     "line": {"size", "line_style", "aa", "blend", "opacity"},
-    "curve": {"size", "line_style", "aa", "blend", "opacity"},
+    "curve": {"hint", "size", "line_style", "aa", "blend", "opacity"},
     "rectangle": {"size", "shape_mode", "fill_style", "line_style", "aa", "blend", "opacity"},
     "rounded_rectangle": {"size", "shape_mode", "fill_style", "line_style", "aa", "blend", "opacity", "radius"},
     "ellipse": {"size", "shape_mode", "fill_style", "line_style", "aa", "blend", "opacity"},
     "freeform": {"size", "shape_mode", "fill_style", "line_style", "aa", "blend", "opacity"},
-    "polygon": {"size", "shape_mode", "fill_style", "line_style", "aa", "blend", "opacity"},
+    "polygon": {"hint", "size", "shape_mode", "fill_style", "line_style", "aa", "blend", "opacity"},
     "text": set(), "picker": {"sample"}, "zoom": set(), "pan": set(),
+}
+
+
+TOOL_HINTS = {
+    "clone": tr('Hold Ctrl and click to set the area to clone from, then drag to paint the copy.'),
+    "polygon": tr('Click to add points (drag to move them). Enter or double-click finishes; Esc cancels.'),
+    "curve": tr('Drag to draw a line, then drag the line or its nodes to bend it. Enter or double-click finishes.'),
+}
+
+# versiones cortas para la barra de opciones (la barra de estado muestra el texto completo)
+TOOL_BAR_HINTS = {
+    "clone": tr('Ctrl+click: set source'),
+    "polygon": tr('Click to add points; Enter finishes'),
+    "curve": tr('Drag, then bend; Enter finishes'),
 }
 
 
@@ -577,6 +593,10 @@ class ToolOptionsBar(QToolBar):
         self.widgets = {}
         self._busy = False
 
+        TOOL_HINT_WIDGET = QLabel()
+        TOOL_HINT_WIDGET.setStyleSheet("color: palette(link); font-style: italic;")
+        self.hint = TOOL_HINT_WIDGET
+
         def add(key, label, widget):
             lab = QLabel(" " + label + " ")
             a1, a2 = self.addWidget(lab), self.addWidget(widget)
@@ -587,7 +607,7 @@ class ToolOptionsBar(QToolBar):
         self.hardness = SliderSpin(0, 100, " %")
         self.opacity = SliderSpin(0, 100, " %")
         self.tolerance = SliderSpin(0, 100, " %")
-        self.radius = QSpinBox(); self.radius.setRange(0, 500); self.radius.setSuffix(" px")
+        self.radius = QSpinBox(); self.radius.setRange(0, 500); self.radius.setSuffix(" px"); fit_spin(self.radius)
         self.aa = QCheckBox(tr('Antialiasing'))
         self.contiguous = QCheckBox(tr('Contiguous'))
         self.sample = QCheckBox(tr('Sample image'))
@@ -596,19 +616,19 @@ class ToolOptionsBar(QToolBar):
             self.shape.addItem(label, k)
         self.shape_mode = QComboBox()
         for k, label in (("outline", tr('Outline')), ("fill", tr('Fill')), ("both", tr('Outline and fill'))):
-            self.shape_mode.addItem(label, k)
+            self._icon_item(self.shape_mode, "shape_mode", k, label)
         self.fill_style = QComboBox()
         for k, label in zip(HATCH_STYLES, (tr('Solid color'), tr('Horizontal hatch'), tr('Vertical hatch'),
                                            tr('Diagonal hatch \\'), tr('Diagonal hatch /'), tr('Cross hatch'),
                                            tr('Diagonal cross hatch'), tr('Dots'), tr('Small checkerboard'),
                                            tr('Large checkerboard'))):
-            self.fill_style.addItem(label, k)
+            self._icon_item(self.fill_style, "fill_style", k, label)
         self.line_style = QComboBox()
         for k, label in zip(LINE_STYLES, (tr('Solid line'), tr('Dashed'), tr('Dotted'), tr('Dash-dot'), tr('Dash-dot-dot'))):
-            self.line_style.addItem(label, k)
+            self._icon_item(self.line_style, "line_style", k, label)
         self.blend = QComboBox()
-        self.blend.addItem(tr('Normal blending'), "normal")
-        self.blend.addItem(tr('Overwrite'), "overwrite")
+        self._icon_item(self.blend, "blend", "normal", tr('Normal blending'))
+        self._icon_item(self.blend, "blend", "overwrite", tr('Overwrite'))
         self.gradient = QComboBox()
         for k, label in zip(GRADIENT_KINDS, (tr('Linear'), tr('Reflected'), tr('Diamond'), "Radial", tr('Conical'))):
             self.gradient.addItem(label, k)
@@ -631,6 +651,7 @@ class ToolOptionsBar(QToolBar):
         for key, w in (("aa", self.aa), ("contiguous", self.contiguous), ("sample", self.sample)):
             act = self.addWidget(w)
             self.widgets[key] = (act, act, w)
+        add("hint", "", self.hint)          # al final: es largo y no debe empujar los demás controles
 
         for w, sig in ((self.size, self.size.valueChanged), (self.hardness, self.hardness.valueChanged),
                        (self.opacity, self.opacity.valueChanged), (self.tolerance, self.tolerance.valueChanged),
@@ -645,6 +666,14 @@ class ToolOptionsBar(QToolBar):
             sig.connect(self._push)
         self.load()
         self.show_for("brush")
+
+    @staticmethod
+    def _icon_item(combo, group, value, tip):
+        """Elemento gráfico (solo icono; el texto va como ayuda emergente), como en Paint.NET."""
+        combo.setIconSize(QSize(46, 20))
+        combo.addItem(option_icon(group, value), "", value)
+        combo.setItemData(combo.count() - 1, tip, Qt.ToolTipRole)
+        combo.setToolTip(tip)
 
     def load(self):
         o = self.options
@@ -677,6 +706,7 @@ class ToolOptionsBar(QToolBar):
 
     def show_for(self, tool_key):
         wanted = TOOL_OPTIONS.get(tool_key, set())
+        self.hint.setText(TOOL_BAR_HINTS.get(tool_key, ""))
         for key, (a1, a2, _) in self.widgets.items():
             a1.setVisible(key in wanted)
             a2.setVisible(key in wanted)

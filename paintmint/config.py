@@ -14,6 +14,7 @@ DEFAULTS = {
     "language": "en",            # "en" | "es"
     "check_updates": True,       # comprobar actualizaciones al iniciar
     "last_update_check": 0.0,    # marca de tiempo UNIX de la última comprobación
+    "colors_more": False,        # ventana de colores en versión completa (True) o simplificada (False)
     "last_canvas": [800, 600],   # último tamaño de lienzo usado (ancho, alto)
     "custom_colors": [],         # colores añadidos a la paleta por el usuario: [[r,g,b,a], ...]
 }

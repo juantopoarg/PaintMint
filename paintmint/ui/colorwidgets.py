@@ -12,7 +12,7 @@ from typing import List, Optional, Tuple
 
 from PyQt5.QtCore import QPointF, QRect, QRectF, QSize, Qt, pyqtSignal
 from PyQt5.QtGui import QBrush, QColor, QConicalGradient, QImage, QLinearGradient, QPainter, QPen, QRadialGradient
-from PyQt5.QtWidgets import QHBoxLayout, QSlider, QSpinBox, QWidget
+from PyQt5.QtWidgets import QHBoxLayout, QSizePolicy, QSlider, QSpinBox, QWidget
 
 from ..i18n import tr
 
@@ -54,6 +54,13 @@ def paint_color(p: QPainter, rect, rgba: RGBA) -> None:
     p.fillRect(rect, QColor(*rgba))
 
 
+def fit_spin(spin: QSpinBox) -> None:
+    """Ajusta el ancho del cuadro numérico a su contenido (el mayor valor posible + sufijo)."""
+    fm = spin.fontMetrics()
+    text = "%d%s" % (spin.maximum(), spin.suffix())
+    spin.setFixedWidth(fm.horizontalAdvance(text) + 30)
+
+
 # -- deslizador + cuadro numérico ------------------------------------------------------
 class SliderSpin(QWidget):
     """Deslizador con un cuadro numérico sincronizado (como la opacidad en Paint.NET).
@@ -77,6 +84,8 @@ class SliderSpin(QWidget):
         lay.setSpacing(4)
         lay.addWidget(self.slider)
         lay.addWidget(self.spin)
+        fit_spin(self.spin)
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)    # no se estira dentro de la barra
         self.slider.valueChanged.connect(self._from_slider)
         self.spin.valueChanged.connect(self._from_spin)
 
@@ -97,10 +106,12 @@ class SliderSpin(QWidget):
 
     def setSuffix(self, s: str) -> None:
         self.spin.setSuffix(s)
+        fit_spin(self.spin)
 
     def setRange(self, lo: int, hi: int) -> None:
         self.slider.setRange(lo, hi)
         self.spin.setRange(lo, hi)
+        fit_spin(self.spin)
 
 
 # -- barra con degradado ---------------------------------------------------------------------

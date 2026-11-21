@@ -292,9 +292,9 @@ def test_space_bar_switches_to_hand_cursor_and_restores_tool_cursor(win):
     assert view.viewport().cursor().pixmap().cacheKey() == tool_cursor_key
 
 
-def test_toolbox_is_single_column_icon_strip_with_paintnet_tools(win):
+def test_toolbox_is_icon_only_grid_with_paintnet_tools(win):
     from paintmint.ui.main_window import TOOLBOX_LAYOUT
-    assert all(isinstance(k, str) for k in TOOLBOX_LAYOUT)   # una sola columna
+    assert all(isinstance(k, str) for k in TOOLBOX_LAYOUT)   # lista plana en orden de lectura
     keys = [k for k in TOOLBOX_LAYOUT]
     assert len(keys) == len(set(keys)) and set(keys) <= set(win.tool_actions)
     buttons = win.toolbox_dock.widget().findChildren(QtWidgets.QToolButton)
@@ -326,10 +326,12 @@ def test_app_icon_exists_in_all_sizes(win):
 
 
 # ---------------------------------------------------------------- v1.2: colores, sliders, idioma, about
-def test_toolbox_buttons_share_one_column(win):
-    buttons = win.toolbox_dock.widget().findChildren(QtWidgets.QToolButton)
-    xs = {b.mapTo(win.toolbox_dock.widget(), b.rect().topLeft()).x() for b in buttons}
-    assert len(xs) == 1
+def test_toolbox_has_two_columns_so_all_tools_fit(win):
+    from paintmint.ui.main_window import TOOLBOX_ROWS
+    box = win.toolbox_dock.widget().widget()
+    buttons = box.findChildren(QtWidgets.QToolButton)
+    xs = {b.mapTo(box, b.rect().topLeft()).x() for b in buttons}
+    assert len(xs) == 2 and all(len(r) == 2 for r in TOOLBOX_ROWS) and len(buttons) == 2 * len(TOOLBOX_ROWS)
 
 
 def test_colors_panel_sliders_hex_and_alpha_update_options(win):
@@ -441,11 +443,17 @@ def test_right_column_panels_collapse_and_expand(win):
         assert not is_collapsed(dock) and dock.maximumHeight() >= full
 
 
-def test_text_panel_starts_collapsed_and_opens_with_text_tool(win):
-    from paintmint.ui.docks import is_collapsed
-    assert is_collapsed(win.text_dock)
+def test_text_panel_is_floating_and_only_visible_with_text_tool(win):
+    win.show()
+    QtWidgets.QApplication.processEvents()
+    d = win.text_dock
+    assert d.isFloating() and not d.isVisible() and d not in win._panel_docks()
     win.select_tool("text")
-    assert not is_collapsed(win.text_dock)
+    assert d.isFloating() and d.isVisible()
+    win.select_tool("brush")
+    assert not d.isVisible()
+    win.select_tool("text")
+    assert d.isVisible()
 
 
 def test_title_bar_buttons_float_and_close(win):
@@ -573,14 +581,14 @@ def test_stale_saved_layout_with_tabbed_docks_is_discarded(app, tmp_path):
     QSettings.setPath(QSettings.NativeFormat, QSettings.UserScope, str(tmp_path))
     old = main_window.MainWindow()
     old.setDockOptions(old.dockOptions() | QtWidgets.QMainWindow.AllowTabbedDocks)
-    old.tabifyDockWidget(old.text_dock, old.history_dock)            # disposición antigua: pestañas
-    assert old.tabifiedDockWidgets(old.text_dock)
+    old.tabifyDockWidget(old.history_dock, old.layers_dock)            # disposición antigua: pestañas
+    assert old.tabifiedDockWidgets(old.history_dock)
     old.settings.setValue("state", old.saveState())                  # sin «layout_version», como las versiones previas
     old.settings.remove("layout_version")
     old.settings.sync()
     new = main_window.MainWindow()
     try:
-        assert new.tabifiedDockWidgets(new.text_dock) == [] and new.tabifiedDockWidgets(new.history_dock) == []
+        assert new.tabifiedDockWidgets(new.history_dock) == [] and new.tabifiedDockWidgets(new.layers_dock) == []
         assert not new.dockOptions() & QtWidgets.QMainWindow.AllowTabbedDocks
     finally:
         new.close()
@@ -592,9 +600,9 @@ def test_right_column_can_be_resized_and_shows_all_content(win):
     win.show()
     QtWidgets.QApplication.processEvents()
     assert win.colors_dock.minimumSizeHint().width() <= 260           # no impone un ancho enorme
-    docks = [win.colors_dock, win.history_dock, win.layers_dock, win.text_dock]   # el Texto colapsado no la bloquea
+    docks = [win.colors_dock, win.history_dock, win.layers_dock]
     for wide in (420, 240, 420):
-        win.resizeDocks(docks, [wide] * 4, Qt.Horizontal)
+        win.resizeDocks(docks, [wide] * 3, Qt.Horizontal)
         QtWidgets.QApplication.processEvents()
         assert all(abs(d.width() - wide) <= 12 for d in docks)
     # si la columna es estrecha, el contenido se desplaza en vez de recortarse
@@ -674,3 +682,45 @@ def test_options_bar_shows_hatch_line_style_and_blend_for_shapes(win):
     assert (win.options.fill_style, win.options.line_style, win.options.blend) == ("cross", "dot", "overwrite")
     win.select_tool("brush")
     assert not bar.widgets["fill_style"][1].isVisible()
+
+
+def test_colors_window_defaults_to_simplified_version(win):
+    from paintmint import config
+    cp = win.colors_panel
+    assert not cp.more_btn.isChecked() and cp.details.isHidden()
+    cp.more_btn.setChecked(True)                      # lo que el usuario elige se recuerda
+    assert config.get("colors_more") is True and not cp.details.isHidden()
+    cp.more_btn.setChecked(False)
+    assert config.get("colors_more") is False
+
+
+def test_number_boxes_fit_their_content(win):
+    bar = win.options_bar
+    for w in (bar.size, bar.opacity, bar.tolerance, bar.hardness):
+        assert w.spin.width() <= 110       # antes ocupaban todo el ancho disponible
+    assert bar.size.sizePolicy().horizontalPolicy() == QtWidgets.QSizePolicy.Fixed
+
+
+def test_option_lists_are_graphical_not_text(win):
+    bar = win.options_bar
+    for combo in (bar.shape_mode, bar.fill_style, bar.line_style, bar.blend):
+        assert combo.count() >= 2
+        for i in range(combo.count()):
+            assert combo.itemText(i) == "" and not combo.itemIcon(i).isNull()
+            assert combo.itemData(i, Qt.ToolTipRole)              # el nombre queda como ayuda emergente
+    # los iconos son distintos entre sí
+    keys = [bar.fill_style.itemIcon(i).pixmap(46, 20).toImage().bits().asstring(46 * 20 * 4)
+            for i in range(bar.fill_style.count())]
+    assert len(set(keys)) == len(keys)
+
+
+def test_clone_tool_explains_ctrl_in_bar_and_status(win):
+    win.resize(1280, 800)
+    win.show()
+    win.select_tool("clone")
+    QtWidgets.QApplication.processEvents()
+    assert win.options_bar.hint.isVisible() and "Ctrl" in win.options_bar.hint.text()
+    assert "Ctrl" in win.statusBar().currentMessage()
+    win.select_tool("brush")
+    QtWidgets.QApplication.processEvents()
+    assert not win.options_bar.hint.isVisible()

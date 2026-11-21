@@ -371,4 +371,10 @@ ES = {
     'Solid color': 'Color sólido',
     'Solid line': 'Línea continua',
     'Vertical hatch': 'Entramado vertical',
+    'Click to add points (drag to move them). Enter or double-click finishes; Esc cancels.': 'Clic para añadir puntos (arrástrelos para moverlos). Intro o doble clic termina; Esc cancela.',
+    'Drag to draw a line, then drag the line or its nodes to bend it. Enter or double-click finishes.': 'Arrastre para trazar una línea; luego arrastre la línea o sus nodos para curvarla. Intro o doble clic termina.',
+    'Hold Ctrl and click to set the area to clone from, then drag to paint the copy.': 'Mantenga Ctrl y haga clic para fijar el área a clonar; luego arrastre para pintar la copia.',
+    "Ctrl+click: set source": "Ctrl+clic: fijar origen",
+    "Click to add points; Enter finishes": "Clic para añadir puntos; Enter finaliza",
+    "Drag, then bend; Enter finishes": "Arrastre y curve; Enter finaliza",
 }

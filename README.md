@@ -42,7 +42,7 @@ You can also drag files onto the window. Each image opens in its own tab.
 ## Panels and startup
 
 - PaintMint starts with a **blank white canvas** using the size of the last canvas you worked with (new image, resize or canvas size; 800×600 the first time).
-- Colors, History, Layers and Text live in one column on the right (drag its left edge to resize it; panels never tab together; content scrolls instead of being clipped). Each panel can be **collapsed** inside the column (▾/▸ button or double-click on its title), **floated** (⧉) or closed (✕; reopen from the *View* menu). The Text panel opens by itself when you pick the Text tool.
+- The toolbox is a compact **2-column** grid so every tool is visible. Colors, History and Layers live in one column on the right (drag its left edge to resize it; panels never tab together; content scrolls instead of being clipped). Each panel can be **collapsed** inside the column (▾/▸ button or double-click on its title), **floated** (⧉) or closed (✕; reopen from the *View* menu). The **Text** editor is a floating window that appears only while the Text tool is active. The Colors window starts in its simplified (*Less*) version and remembers your choice. Option lists (Style, Fill, Line style, Blending) are graphical like Paint.NET, number boxes fit their content, and the Clone Stamp reminds you to **Ctrl+click** to set the source.
 - *View ▸ Floating panels (Paint.NET layout)* floats every panel over the canvas like Paint.NET (Tools top-left, History top-right, Colors bottom-left, Layers bottom-right); *View ▸ Reset panel layout* docks them again. *View ▸ Maximize window* (F11) toggles maximize.
 - **Color wheel:** left click/drag sets the **primary** color, right click/drag sets the **secondary** one.
 - **File ▸ New** has a *Maintain aspect ratio* lock so width and height change together.
@@ -83,7 +83,7 @@ Sliders (with numeric boxes) are also used for **size, hardness, opacity and the
 ```
 
 No display needed (Qt in `offscreen` mode) and no network (the updater tests use a fake downloader). Currently
-**263 tests pass**; 3 file-permission tests are skipped when running as `root` (root ignores permissions) and pass as a normal user.
+**267 tests pass**; 3 file-permission tests are skipped when running as `root` (root ignores permissions) and pass as a normal user.
 
 | File | Covers |
 |---|---|
@@ -194,7 +194,7 @@ Selection modifiers: `Ctrl` add · `Alt` subtract · `Ctrl+Alt` intersect · `Sh
 ## Steps to verify on Linux Mint
 
 1. `./scripts/install_deps.sh` finishes with "All good."
-2. `./scripts/run_tests.sh` → all green (263 passed).
+2. `./scripts/run_tests.sh` → all green (267 passed).
 3. `./paintmint.sh` opens the window in English. **File ▸ New** (800×600, white background).
 4. Brush (`B`): draw a stroke → `Ctrl+Z` removes it, `Ctrl+Y` brings it back.
 5. **Layers ▸ New layer**; draw on it; lower its opacity with the slider in the *Layers* panel; hide it with its checkbox.

@@ -7,7 +7,7 @@ from ..i18n import tr
 import os
 from typing import Optional
 
-from PyQt5.QtCore import QTimer, QSettings, QSize, Qt
+from PyQt5.QtCore import QPoint, QTimer, QSettings, QSize, Qt
 from PyQt5.QtGui import QIcon, QKeySequence
 from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDockWidget, QFileDialog, QGridLayout, QInputDialog,
                              QFrame, QLabel, QScrollArea, QVBoxLayout, QMainWindow, QMessageBox, QTabWidget, QToolBar, QToolButton, QWidget)
@@ -25,7 +25,7 @@ from .icons import tool_icon
 from .about import AboutDialog
 from .docks import QWIDGETSIZE_MAX,  is_collapsed, set_collapsed, setup_dock, wrap_scroll
 from .update_ui import UpdateController
-from .panels import ColorsPanel, HistoryPanel, LayersPanel, TextPanel, ToolOptionsBar
+from .panels import TOOL_HINTS, ColorsPanel, HistoryPanel, LayersPanel, TextPanel, ToolOptionsBar
 from .qtutil import guarded, qimage_from_rgba, rgba_from_qimage, show_error
 
 SHORTCUTS = {"levels": "Ctrl+L", "curves": "Ctrl+Shift+M", "hue_saturation": "Ctrl+Shift+U",
@@ -36,11 +36,12 @@ TOOL_KEYS = {"select_rect": "S", "select_ellipse": "Shift+S", "select_lasso": "L
              "text": "T", "picker": "K", "zoom": "Z", "pan": "H", "clone": "C", "recolor": "R", "curve": "Shift+I",
              "freeform": "Shift+F", "polygon": "Shift+P"}
 # filas de dos botones; None = hueco
-TOOLBOX_LAYOUT = [   # una sola columna, en el orden de Paint.NET
-    "select_rect", "move", "zoom", "move_selection", "select_lasso", "pan", "select_ellipse",
-    "select_wand", "fill", "gradient", "brush", "eraser", "pencil", "picker", "clone", "recolor", "text",
-    "line", "curve", "rectangle", "rounded_rectangle", "ellipse", "freeform", "polygon",
+TOOLBOX_ROWS = [   # dos columnas, en el orden de Paint.NET
+    ("select_rect", "move"), ("zoom", "move_selection"), ("select_lasso", "pan"), ("select_ellipse", "select_wand"),
+    ("fill", "gradient"), ("brush", "eraser"), ("pencil", "picker"), ("clone", "recolor"), ("text", "line"),
+    ("curve", "rectangle"), ("rounded_rectangle", "ellipse"), ("freeform", "polygon"),
 ]
+TOOLBOX_LAYOUT = [k for row in TOOLBOX_ROWS for k in row]
 ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 MAX_RECENT = 10
 
@@ -55,7 +56,7 @@ def app_icon() -> QIcon:
     return icon
 
 
-LAYOUT_VERSION = "3"   # súbase al cambiar la disposición de los paneles (invalida el estado guardado)
+LAYOUT_VERSION = "4"   # súbase al cambiar la disposición de los paneles (invalida el estado guardado)
 
 
 class MainWindow(QMainWindow):
@@ -121,8 +122,10 @@ class MainWindow(QMainWindow):
         self.colors_dock = self._dock(tr('Colors'), wrap_scroll(self.colors_panel), Qt.RightDockWidgetArea, "colors")
         self.history_dock = self._dock(tr('History'), self.history_panel, Qt.RightDockWidgetArea, "history")
         self.layers_dock = self._dock(tr('Layers'), self.layers_panel, Qt.RightDockWidgetArea, "layers")
+        # el editor de texto es una ventana flotante que solo aparece mientras se usa la herramienta Texto
         self.text_dock = self._dock(tr('Text'), wrap_scroll(self.text_panel), Qt.RightDockWidgetArea, "text")
-        set_collapsed(self.text_dock, True)          # se despliega al elegir la herramienta Texto
+        self.text_dock.setFloating(True)
+        self.text_dock.hide()
         self.resizeDocks([self.colors_dock, self.history_dock, self.layers_dock], [360, 110, 220], Qt.Vertical)
         self.resizeDocks([self.colors_dock], [300], Qt.Horizontal)       # ancho inicial de la columna derecha
         lp = self.layers_panel.buttons
@@ -312,26 +315,27 @@ class MainWindow(QMainWindow):
         self.addToolBar(Qt.TopToolBarArea, self.options_bar)
 
     def _build_toolbox(self):
-        """Caja de herramientas de una sola columna, solo con iconos (estilo Paint.NET)."""
+        """Caja de herramientas de dos columnas, solo con iconos (estilo Paint.NET)."""
         box = QWidget()
-        col = QVBoxLayout(box)
-        col.setContentsMargins(4, 4, 4, 4)
-        col.setSpacing(2)
-        for key in TOOLBOX_LAYOUT:
-            btn = QToolButton()
-            btn.setDefaultAction(self.tool_actions[key])
-            btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
-            btn.setAutoRaise(True)
-            btn.setIconSize(QSize(26, 26))
-            btn.setFixedSize(36, 36)
-            col.addWidget(btn)
-        col.addStretch(1)
+        grid = QGridLayout(box)
+        grid.setContentsMargins(4, 4, 4, 4)
+        grid.setSpacing(2)
+        for r, row in enumerate(TOOLBOX_ROWS):
+            for c, key in enumerate(row):
+                btn = QToolButton()
+                btn.setDefaultAction(self.tool_actions[key])
+                btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+                btn.setAutoRaise(True)
+                btn.setIconSize(QSize(26, 26))
+                btn.setFixedSize(36, 36)
+                grid.addWidget(btn, r, c)
+        grid.setRowStretch(len(TOOLBOX_ROWS), 1)
         scroll = QScrollArea()          # por si la ventana es más baja que la columna de herramientas
         scroll.setWidget(box)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setMinimumWidth(60)
+        scroll.setMinimumWidth(84)
         dock = self._dock(tr('Tools'), scroll, Qt.LeftDockWidgetArea, "toolbox")
         self.toolbox_dock = dock
 
@@ -469,8 +473,10 @@ class MainWindow(QMainWindow):
         self.tool_key = key
         self.tool_actions[key].setChecked(True)
         self.options_bar.show_for(key)
-        if key == "text" and is_collapsed(self.text_dock):
-            set_collapsed(self.text_dock, False)
+        self._sync_text_dock()
+        hint = TOOL_HINTS.get(key)
+        if hint:
+            self.statusBar().showMessage(hint, 10000)
         for i in range(self.tabs.count()):
             w = self.tabs.widget(i)
             if isinstance(w, CanvasView):
@@ -639,8 +645,24 @@ class MainWindow(QMainWindow):
         y = min(max(scr.top(), fg.top()), scr.bottom() - fg.height() + 1)
         self.move(x, y)
 
+    def _sync_text_dock(self):
+        """El panel de texto flota y se muestra solo con la herramienta Texto activa."""
+        d = self.text_dock
+        if self.tool_key == "text":
+            if not d.isFloating():
+                d.setFloating(True)
+            if not d.isVisible():
+                if not d.property("placed"):         # primera vez: arriba a la derecha de la ventana
+                    d.resize(270, 330)
+                    d.move(self.mapToGlobal(self.rect().topRight()) - QPoint(300, -140))
+                    d.setProperty("placed", True)
+                d.show()
+            d.raise_()
+        else:
+            d.hide()
+
     def _panel_docks(self):
-        return [self.toolbox_dock, self.colors_dock, self.history_dock, self.layers_dock, self.text_dock]
+        return [self.toolbox_dock, self.colors_dock, self.history_dock, self.layers_dock]
 
     def set_floating_panels(self, on: bool):
         """Activa la disposición de Paint.NET (paneles flotando sobre el lienzo) o los acopla de nuevo."""
@@ -652,8 +674,7 @@ class MainWindow(QMainWindow):
         w, h = area.width(), area.height()
         # (dock, ancho, alto, esquina)
         spec = [(self.toolbox_dock, 76, min(h - 16, 560), "tl"), (self.history_dock, 220, 180, "tr"),
-                (self.colors_dock, 260, 250, "bl"), (self.layers_dock, 240, 220, "br"),
-                (self.text_dock, 260, 40, "tr2")]
+                (self.colors_dock, 260, 250, "bl"), (self.layers_dock, 240, 220, "br")]
         self.colors_panel.more_btn.setChecked(False)          # como Paint.NET: «Menos» al flotar
         for dock, dw, dh, corner in spec:
             dock.show()
@@ -667,11 +688,12 @@ class MainWindow(QMainWindow):
         for d in self._panel_docks():
             d.setFloating(False)
             d.show()
-            set_collapsed(d, d is self.text_dock)
+            set_collapsed(d, False)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.toolbox_dock)
-        for d in (self.colors_dock, self.history_dock, self.layers_dock, self.text_dock):
+        for d in (self.colors_dock, self.history_dock, self.layers_dock):
             self.addDockWidget(Qt.RightDockWidgetArea, d)
-        self.colors_panel.more_btn.setChecked(True)
+        self.colors_panel.more_btn.setChecked(False)         # por defecto: versión simplificada
+        self._sync_text_dock()
         if not keep_flag:
             self.a_float_panels.blockSignals(True)
             self.a_float_panels.setChecked(False)
@@ -699,6 +721,7 @@ class MainWindow(QMainWindow):
             return
         if s is not None:
             self.restoreState(s)
+        self._sync_text_dock()
         collapsed = self.settings.value("collapsed")
         if collapsed is not None:
             collapsed = [collapsed] if isinstance(collapsed, str) else list(collapsed)

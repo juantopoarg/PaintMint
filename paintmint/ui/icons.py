@@ -142,3 +142,59 @@ def tool_cursor(key: str):
     p.drawPixmap(12, 12, dark)
     p.end()
     return QCursor(pm, 9, 9)
+
+
+def option_icon(group: str, value: str, w: int = 46, h: int = 20, ink: QColor = None) -> QIcon:
+    """Icono gráfico para las listas de opciones de la barra de herramientas (como en Paint.NET)."""
+    import numpy as np
+    from PyQt5.QtGui import QImage
+
+    from ..render import raster
+
+    if ink is None:
+        ink = QApplication.palette().color(QPalette.ButtonText)
+    pm = QPixmap(w, h)
+    pm.fill(Qt.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.Antialiasing)
+    accent = QColor(80, 190, 140)
+    if group == "shape_mode":
+        r = QRectF(8, 4, w - 16, h - 8)
+        if value == "outline":
+            p.setPen(QPen(ink, 2)); p.drawRoundedRect(r, 3, 3)
+        elif value == "fill":
+            p.setPen(Qt.NoPen); p.setBrush(ink); p.drawRoundedRect(r, 3, 3)
+        else:
+            p.setPen(QPen(ink, 2)); p.setBrush(accent); p.drawRoundedRect(r, 3, 3)
+    elif group == "fill_style":
+        iw, ih = w - 6, h - 6
+        mask = np.ones((ih, iw), dtype=bool) if value == "solid" else raster.hatch_mask((0, 0, iw, ih), value)
+        img = QImage(iw, ih, QImage.Format_ARGB32)
+        img.fill(Qt.transparent)
+        rgb = ink.rgba()
+        for y in range(ih):
+            for x in range(iw):
+                if mask[y, x]:
+                    img.setPixel(x, y, rgb)
+        p.drawImage(3, 3, img)
+        p.setPen(QPen(ink, 1)); p.setBrush(Qt.NoBrush); p.drawRect(QRectF(2.5, 2.5, iw + 1, ih + 1))
+    elif group == "line_style":
+        pen = QPen(ink, 3)
+        pen.setCapStyle(Qt.FlatCap)
+        if value == "solid":
+            pen.setStyle(Qt.SolidLine)
+        else:
+            pen.setDashPattern([float(v) for v in raster._LINE_PATTERNS[value]])
+        p.setPen(pen)
+        p.drawLine(QPointF(4, h / 2.0), QPointF(w - 4, h / 2.0))
+    elif group == "blend":
+        p.setPen(QPen(ink, 1.5)); p.setBrush(ink)
+        p.drawEllipse(QRectF(w / 2.0 - 15, 3, 14, 14))
+        if value == "normal":     # mezcla alfa: el segundo círculo deja ver el primero
+            c = QColor(accent); c.setAlpha(150)
+            p.setBrush(c); p.setPen(QPen(accent, 1.5))
+        else:                     # sobrescribir: el segundo círculo tapa por completo
+            p.setBrush(accent); p.setPen(QPen(accent, 1.5))
+        p.drawEllipse(QRectF(w / 2.0 - 3, 3, 14, 14))
+    p.end()
+    return QIcon(pm)
