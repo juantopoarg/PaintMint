@@ -6,7 +6,7 @@ def test_launcher_is_created_in_graphics_category_and_is_idempotent(tmp_path, mo
     assert desktop.ensure_launcher(str(tmp_path)) is True
     f = tmp_path / "applications" / "paintmint.desktop"
     text = f.read_text(encoding="utf-8")
-    assert "Categories=Graphics;" in text and str(desktop.ROOT / "paintmint.sh") in text
+    assert "Categories=Graphics;" in text and str(desktop.ROOT / "paintmint.sh") in text and "Exec=bash " in text
     assert (tmp_path / "icons" / "hicolor" / "48x48" / "apps" / "paintmint.png").exists()
     assert desktop.ensure_launcher(str(tmp_path)) is False          # sin cambios: no reescribe
     f.write_text("viejo")

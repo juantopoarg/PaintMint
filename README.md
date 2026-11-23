@@ -36,6 +36,7 @@ Tested with Python 3.13; the syntax is checked to be compatible with Python ≥ 
 ./paintmint.sh photo.png other.jpg   # open files directly
 # PaintMint adds itself to the applications menu (Graphics category) with its icon when installed and on first run;
 ./scripts/install_desktop_entry.sh   # (manual alternative) re-creates the menu entry
+python3 -m paintmint --install-launcher   # same thing, without the script
 ```
 
 You can also drag files onto the window. Each image opens in its own tab.

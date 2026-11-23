@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -16,7 +17,7 @@ Type=Application
 Name=PaintMint
 Comment=Layered image editor
 Comment[es]=Editor de imágenes por capas
-Exec={exec} %F
+Exec=bash "{exec}" %F
 Icon=paintmint
 Terminal=false
 StartupWMClass=paintmint
@@ -51,6 +52,12 @@ def ensure_launcher(data_home: str | None = None) -> bool:
             dst.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(svg, dst / "paintmint.svg")
         target.write_text(text, encoding="utf-8")
+        for cmd in (["update-desktop-database", str(target.parent)],
+                    ["gtk-update-icon-cache", "-f", "-t", str(data / "icons" / "hicolor")]):
+            try:
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
+            except (OSError, subprocess.SubprocessError):
+                pass
         return True
     except OSError:
         return False

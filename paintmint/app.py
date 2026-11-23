@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
 
 def main(argv=None) -> int:
     argv = list(sys.argv if argv is None else argv)
+    if "--install-launcher" in argv:       # python3 -m paintmint --install-launcher
+        os.environ.pop("PAINTMINT_NO_DESKTOP", None)
+        from .desktop import ensure_launcher
+        ensure_launcher()
+        print("Menu entry: ~/.local/share/applications/paintmint.desktop")
+        return 0
     try:
         from PyQt5.QtWidgets import QApplication
     except ImportError:
