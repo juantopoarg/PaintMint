@@ -34,7 +34,8 @@ Tested with Python 3.13; the syntax is checked to be compatible with Python ≥ 
 ```bash
 ./paintmint.sh                       # or: python3 -m paintmint
 ./paintmint.sh photo.png other.jpg   # open files directly
-./scripts/install_desktop_entry.sh   # (optional) adds PaintMint to the applications menu with its icon
+# PaintMint adds itself to the applications menu (Graphics category) with its icon when installed and on first run;
+./scripts/install_desktop_entry.sh   # (manual alternative) re-creates the menu entry
 ```
 
 You can also drag files onto the window. Each image opens in its own tab.
@@ -83,7 +84,7 @@ Sliders (with numeric boxes) are also used for **size, hardness, opacity and the
 ```
 
 No display needed (Qt in `offscreen` mode) and no network (the updater tests use a fake downloader). Currently
-**267 tests pass**; 3 file-permission tests are skipped when running as `root` (root ignores permissions) and pass as a normal user.
+**269 tests pass**; 3 file-permission tests are skipped when running as `root` (root ignores permissions) and pass as a normal user.
 
 | File | Covers |
 |---|---|
@@ -194,7 +195,7 @@ Selection modifiers: `Ctrl` add · `Alt` subtract · `Ctrl+Alt` intersect · `Sh
 ## Steps to verify on Linux Mint
 
 1. `./scripts/install_deps.sh` finishes with "All good."
-2. `./scripts/run_tests.sh` → all green (267 passed).
+2. `./scripts/run_tests.sh` → all green (269 passed).
 3. `./paintmint.sh` opens the window in English. **File ▸ New** (800×600, white background).
 4. Brush (`B`): draw a stroke → `Ctrl+Z` removes it, `Ctrl+Y` brings it back.
 5. **Layers ▸ New layer**; draw on it; lower its opacity with the slider in the *Layers* panel; hide it with its checkbox.

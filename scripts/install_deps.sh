@@ -47,4 +47,7 @@ if missing:
 print("All good.")
 PY
 
+echo ">> Adding PaintMint to the applications menu (Graphics)…"
+"$(dirname "$0")/install_desktop_entry.sh" || true
+
 echo ">> Done. Run:   ./paintmint.sh   (o: python3 -m paintmint)"

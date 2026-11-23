@@ -22,6 +22,8 @@ def main(argv=None) -> int:
     app.setDesktopFileName("paintmint")   # asocia la ventana con paintmint.desktop (icono en la barra de tareas)
     app.setWindowIcon(app_icon())
     install_excepthook()
+    from .desktop import ensure_launcher
+    ensure_launcher()                      # deja el acceso directo en Menú > Gráficos (solo la primera vez / si cambió la ruta)
     win = MainWindow(files=[a for a in argv[1:] if not a.startswith("-")], open_blank=True)
     win.show()
     return app.exec_()
