@@ -29,7 +29,7 @@ def gaussian_blur_pm(pm: np.ndarray, radius: float) -> np.ndarray:
 
 
 class GaussianBlur(Effect):
-    key, label, category = "gaussian_blur", tr('Gaussian blur'), "effect"
+    key, label, category, group = "gaussian_blur", tr('Gaussian blur'), "effect", "blurs"
     params = [Param("radius", tr('Radius'), "float", 4.0, 0.0, 200.0)]
 
     def apply(self, pixels, radius):
@@ -41,7 +41,7 @@ class GaussianBlur(Effect):
 class Sharpen(Effect):
     """Máscara de enfoque (unsharp mask)."""
 
-    key, label, category = "sharpen", tr('Sharpen'), "effect"
+    key, label, category, group = "sharpen", tr('Sharpen'), "effect", "photo"
     params = [
         Param("amount", tr('Amount (%)'), "int", 100, 0, 500),
         Param("radius", tr('Radius'), "float", 2.0, 0.1, 50.0),
@@ -57,7 +57,7 @@ class Sharpen(Effect):
 
 
 class Pixelate(Effect):
-    key, label, category = "pixelate", tr('Pixelate'), "effect"
+    key, label, category, group = "pixelate", tr('Pixelate'), "effect", "distort"
     params = [Param("size", tr('Cell size'), "int", 8, 1, 256)]
 
     def apply(self, pixels, size):
@@ -71,20 +71,23 @@ class Pixelate(Effect):
 
 
 class AddNoise(Effect):
-    key, label, category = "noise", tr('Add noise'), "effect"
+    key, label, category, group = "noise", tr('Add noise'), "effect", "noise"
     params = [
         Param("intensity", tr('Intensity'), "int", 30, 0, 100),
         Param("color", tr('Color saturation'), "int", 0, 0, 100),
         Param("seed", tr('Seed'), "int", 0, 0, 2**31 - 1),
+        Param("coverage", tr('Coverage'), "int", 100, 0, 100),
     ]
 
-    def apply(self, pixels, intensity, color, seed):
+    def apply(self, pixels, intensity, color, seed, coverage=100):
         rng = np.random.default_rng(seed)
         h, w = pixels.shape[:2]
         sigma = intensity * 2.55 / 2.0
         luma = rng.normal(0.0, sigma, (h, w, 1)).astype(np.float32)
         chroma = rng.normal(0.0, sigma, (h, w, 3)).astype(np.float32)
         noise = luma * (1 - color / 100.0) + chroma * (color / 100.0)
+        if coverage < 100:
+            noise = noise * (rng.random((h, w, 1)) < coverage / 100.0)
         out = pixels.copy()
         out[..., :3] = np.clip(np.rint(pixels[..., :3].astype(np.float32) + noise), 0, 255).astype(np.uint8)
         return out

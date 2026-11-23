@@ -17,7 +17,7 @@ from ..core import io as pmio
 from ..core.document import Document
 from ..core.errors import InvalidOperationError, PaintMintError
 from ..core.session import EditSession
-from ..effects import REGISTRY
+from ..effects import GROUPS, REGISTRY
 from ..tools import ToolOptions, create_tools
 from .canvas import CanvasView
 from .dialogs import CanvasSizeDialog, EffectDialog, LayerPropertiesDialog, NewImageDialog, ResizeDialog
@@ -29,7 +29,7 @@ from .panels import TOOL_HINTS, ColorsPanel, HistoryPanel, LayersPanel, TextPane
 from .qtutil import guarded, qimage_from_rgba, rgba_from_qimage, show_error
 
 SHORTCUTS = {"levels": "Ctrl+L", "curves": "Ctrl+Shift+M", "hue_saturation": "Ctrl+Shift+U",
-             "invert": "Ctrl+Shift+I", "grayscale": "Ctrl+Shift+G", "sepia": "Ctrl+Shift+E"}
+             "invert": "Ctrl+Shift+I", "auto_level": "Ctrl+Shift+L", "grayscale": "Ctrl+Shift+G", "sepia": "Ctrl+Shift+E"}
 TOOL_KEYS = {"select_rect": "S", "select_ellipse": "Shift+S", "select_lasso": "L", "select_wand": "W",
              "move": "M", "move_selection": "Shift+M", "brush": "B", "pencil": "P", "eraser": "E", "fill": "F",
              "gradient": "G", "line": "I", "rectangle": "O", "rounded_rectangle": "Shift+O", "ellipse": "J",
@@ -278,8 +278,16 @@ class MainWindow(QMainWindow):
         m.addAction(self.a_l_props)
         madj = mb.addMenu(tr('&Adjustments'))
         mfx = mb.addMenu(tr('E&ffects'))
+        group_names = {"artistic": tr('Artistic'), "blurs": tr('Blurs'), "color": tr('Color'), "distort": tr('Distort'),
+                       "noise": tr('Noise'), "object": tr('Object'), "photo": tr('Photo'), "render": tr('Render'),
+                       "stylize": tr('Stylize')}
+        submenus = {g: mfx.addMenu(group_names[g]) for g in GROUPS}
         for key, eff in REGISTRY.items():
-            (madj if eff.category == "adjust" else mfx).addAction(self.effect_actions[key])
+            if eff.category == "adjust":
+                madj.addAction(self.effect_actions[key])
+            else:
+                (submenus[eff.group] if eff.group in submenus else mfx).addAction(self.effect_actions[key])
+        self.effect_menus = submenus
         m = mb.addMenu(tr('&Help'))
         lang_menu = m.addMenu(tr('&Language'))
         self.lang_actions = {}

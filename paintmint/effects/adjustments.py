@@ -136,13 +136,16 @@ class Grayscale(Effect):
 
 class Sepia(Effect):
     key, label, category = "sepia", "Sepia", "adjust"
-    params = []
+    params = [Param("intensity", tr('Intensity'), "int", 100, 0, 100)]
 
-    def apply(self, pixels):
+    def apply(self, pixels, intensity=100):
         rgb = pixels[..., :3].astype(np.float32)
         m = np.array([[0.393, 0.769, 0.189], [0.349, 0.686, 0.168], [0.272, 0.534, 0.131]], dtype=np.float32)
+        gray = (rgb @ np.array([0.299, 0.587, 0.114], np.float32))[..., None]
+        sep = rgb @ m.T
+        t = intensity / 100.0
         out = pixels.copy()
-        out[..., :3] = np.clip(np.rint(rgb @ m.T), 0, 255).astype(np.uint8)
+        out[..., :3] = np.clip(np.rint(gray * (1 - t) + sep * t), 0, 255).astype(np.uint8)
         return out
 
 

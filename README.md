@@ -85,7 +85,7 @@ Sliders (with numeric boxes) are also used for **size, hardness, opacity and the
 ```
 
 No display needed (Qt in `offscreen` mode) and no network (the updater tests use a fake downloader). Currently
-**269 tests pass**; 3 file-permission tests are skipped when running as `root` (root ignores permissions) and pass as a normal user.
+**408 tests pass**; 3 file-permission tests are skipped when running as `root` (root ignores permissions) and pass as a normal user.
 
 | File | Covers |
 |---|---|
@@ -94,6 +94,7 @@ No display needed (Qt in `offscreen` mode) and no network (the updater tests use
 | `test_selection.py` | rectangle, ellipse, lasso, wand, combining (add/subtract/intersect/XOR), undo |
 | `test_history.py` | exact undo/redo, unlimited, step merging, memory trimming, timeline jumps, "modified" state |
 | `test_tools.py` | brush, pencil, eraser, fill, gradient, shapes, color picker, selection, move, editable text |
+| `test_effects_catalog.py` | the Adjustments/Effects lists and submenus match Paint.NET; every effect runs on tiny/transparent images; seeds, shadows, quantize, etc. |
 | `test_effects.py` | brightness/contrast, levels, curves, hue/saturation, blur, sharpen, pixelate, noise, selection clipping |
 | `test_io.py` | PNG, JPG, BMP, GIF, TIFF and ORA round trips; EXIF, 16 bit, color modes, animated GIF |
 | `test_errors.py` | corrupt/truncated/empty/unsupported files, no permissions, disk full, missing folder, out of memory |
@@ -157,8 +158,8 @@ Every error path produces a `PaintMintError` with a user-facing message; the UI 
 | Drawing | brush (width, hardness, opacity, antialiasing, blending), pencil, eraser, paint bucket, gradients (linear, reflected, diamond, radial, conical), shapes as separate tools (line, **curve**, rectangle, rounded rectangle, ellipse, **freeform shape**, **polygon**; outline/fill/both; Shift = proportional), **clone stamp** (Ctrl+click sets the source), **recolor**, color picker |
 | Shape options | Paint.NET-style tool bar: **brush width**, **fill** (solid color or hatch: horizontal, vertical, diagonal, cross, diagonal cross, dots, small/large checkerboard — foreground = fill color, background = the other color), **line style** (solid, dashed, dotted, dash-dot, dash-dot-dot), **antialiasing**, **blending** (normal / overwrite, i.e. alpha blending off) |
 | Text | editable text layers: font, size, bold, italic, alignment, color, drag to move |
-| Adjustments | brightness/contrast, levels, curves (interactive editor), hue/saturation, invert, black and white, sepia, posterize — all with preview |
-| Effects | Gaussian blur, sharpen, pixelate, noise — with preview |
+| Adjustments (13, as in Paint.NET) | auto-level, black and white, brightness/contrast, curves (interactive editor), exposure, highlights/shadows, hue/saturation, invert alpha, invert colors, levels, posterize, sepia, temperature/tint — with preview |
+| Effects (44, nine submenus as in Paint.NET) | **Artistic:** ink sketch, linocut, mosaic, oil painting, pencil sketch, pointillism, stained glass · **Blurs:** bokeh, fragment, Gaussian, median, motion, radial, sketch, square, surface, zoom · **Color:** ordered dither, quantize/dither · **Distort:** bulge, crystalize, dents, frosted glass, morphology, pixelate, polar inversion, spherize, tile reflection, twist, waves · **Noise:** add noise, reduce noise · **Object:** drop shadow · **Photo:** glow, red-eye removal, sharpen, soften portrait, straighten, vignette · **Render:** clouds, Julia fractal, Mandelbrot fractal, turbulence · **Stylize:** edge detect, emboss, halftone, outline, relief |
 | Image | resize (4 methods), canvas size with anchor, flip, rotate 90/180/270, crop |
 | Editing | unlimited undo/redo + navigable history panel, copy/cut/paste (also "paste into new image"; pasting something **larger than the canvas asks whether to expand the canvas or keep its size**, like Paint.NET), delete/fill selection |
 | Colors | **Paint.NET-style Colors window** (wheel, RGB/HSV/Hex/Alpha, large palette with custom colors) |
@@ -175,7 +176,7 @@ Every error path produces a `PaintMintError` with a user-facing message; the UI 
 | Native `.pdn` format | No | Closed proprietary .NET format; `.ora` (open standard) is offered to keep layers |
 | Effect plugins (.NET FX) | No | They depend on the .NET/Windows runtime; PaintMint effects are added as Python classes (`effects/`) |
 | Fully editable vector shapes | Partial | Polygon and curve nodes can be dragged and added *until confirmed* (Enter, double click or switching tool); after that they are pixels (no persistent vector object model) |
-| Advanced artistic effects (oil, emboss, distortions, clouds, noise reduction…) | Partial | Adjustments and blur/sharpen were prioritized; the `Effect` framework lets you add more without changing the UI |
+| Effects menu | Yes (simplified) | Same names and submenus as Paint.NET. The *Quality* sliders and the Clouds/Julia color pickers are omitted; render effects use black/white and a fixed palette, and *Randomize* is a *Seed* number |
 | Per-channel color correction in Levels/Curves | No | Master channel only (RGB together) |
 | GIF animation, multipage TIFF | No | Only the first frame is opened/saved |
 | Alpha in BMP | No | Not interoperable; flattened on white |
@@ -189,14 +190,14 @@ Every error path produces a `PaintMintError` with a user-facing message; the UI 
 Tools: `S` select · `Shift+S` ellipse · `L` lasso · `W` wand · `M` move pixels · `Shift+M` move selection · `B` brush · `P` pencil · `E` eraser · `F` fill · `G` gradient · `I` line · `O` rectangle · `Shift+O` rounded · `J` ellipse · `T` text · `K` color picker · `C` clone stamp · `R` recolor · `Shift+I` curve · `Shift+F` freeform · `Shift+P` polygon · `Z` zoom · `H` pan.
 Edit: `Ctrl+Z` / `Ctrl+Y` undo/redo · `Ctrl+A/D/I` all/none/invert · `Esc` clear selection · `Backspace` fill with primary · `X` swap colors.
 Layers: `Ctrl+Shift+N` new · `Ctrl+Shift+D` duplicate · `Ctrl+M` merge down · `F4` properties.
-Adjustments: `Ctrl+L` levels · `Ctrl+Shift+M` curves · `Ctrl+Shift+U` hue/saturation · `Ctrl+Shift+I` invert · `Ctrl+Shift+G` black and white.
+Adjustments: `Ctrl+L` levels · `Ctrl+Shift+M` curves · `Ctrl+Shift+U` hue/saturation · `Ctrl+Shift+I` invert · `Ctrl+Shift+G` black and white · `Ctrl+Shift+L` auto-level.
 Polygon/curve: click or drag nodes · `Enter` or double click confirms · `Esc` discards.
 Selection modifiers: `Ctrl` add · `Alt` subtract · `Ctrl+Alt` intersect · `Shift` square/circle.
 
 ## Steps to verify on Linux Mint
 
 1. `./scripts/install_deps.sh` finishes with "All good."
-2. `./scripts/run_tests.sh` → all green (269 passed).
+2. `./scripts/run_tests.sh` → all green (408 passed).
 3. `./paintmint.sh` opens the window in English. **File ▸ New** (800×600, white background).
 4. Brush (`B`): draw a stroke → `Ctrl+Z` removes it, `Ctrl+Y` brings it back.
 5. **Layers ▸ New layer**; draw on it; lower its opacity with the slider in the *Layers* panel; hide it with its checkbox.

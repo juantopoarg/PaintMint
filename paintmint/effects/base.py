@@ -29,6 +29,7 @@ class Effect:
     key = "effect"
     label = tr('Effect')
     category = "effect"            # "adjust" | "effect"
+    group = ""                     # submenú de Efectos (artistic, blurs, color, distort, noise, object, photo, render, stylize)
     params: List[Param] = []
 
     def resolve(self, values: Optional[dict] = None) -> dict:

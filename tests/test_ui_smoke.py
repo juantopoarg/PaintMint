@@ -724,3 +724,14 @@ def test_clone_tool_explains_ctrl_in_bar_and_status(win):
     win.select_tool("brush")
     QtWidgets.QApplication.processEvents()
     assert not win.options_bar.hint.isVisible()
+
+
+def test_effects_menu_has_the_nine_submenus(win):
+    from paintmint.effects import GROUPS
+    from tests.test_effects_catalog import PDN_EFFECTS, PDN_ADJUSTMENTS
+    if True:
+        assert list(win.effect_menus) == list(GROUPS)
+        for g, menu in win.effect_menus.items():
+            assert len(menu.actions()) == len(PDN_EFFECTS[g])
+        adj = [a for a in win.menuBar().actions() if a.menu() and "djust" in a.text()][0].menu()
+        assert len(adj.actions()) == len(PDN_ADJUSTMENTS)
