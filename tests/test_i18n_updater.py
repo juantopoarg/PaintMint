@@ -201,3 +201,57 @@ def test_failed_copy_rolls_back(monkeypatch, tmp_path):
     with pytest.raises(updater.UpdateError):
         updater.install_from_zip_bytes(make_zip("2.0.0"), str(root))
     assert (root / "paintmint" / "old_module.py").exists()
+
+
+import re
+
+_QAPP = None   # referencia viva: Qt aborta si la QApplication se destruye
+OTHER_LANGS = ["fr", "pt", "zh", "hi", "de", "ru"]
+
+
+def _placeholders(s):
+    return sorted(re.findall(r"\{[^}]*\}", s))
+
+
+def test_all_eight_languages_are_offered():
+    assert set(i18n.LANGUAGES) == {"en", "es", "fr", "pt", "zh", "hi", "de", "ru"}
+
+
+@pytest.mark.parametrize("code", OTHER_LANGS)
+def test_language_catalog_is_complete_and_keeps_placeholders(code):
+    import importlib
+    cat = importlib.import_module(f"paintmint.locales.{code}").T
+    missing = sorted(_tr_ids() - set(cat))
+    assert not missing, missing
+    for key, text in cat.items():
+        assert text.strip(), key
+        assert _placeholders(key) == _placeholders(text), (key, text)
+        assert key.count("\n") == text.count("\n"), (key, text)
+        assert key.endswith(" ") == text.endswith(" "), repr(key)
+    assert cat["Layers"] != "Layers" and cat["Opacity"] != "Opacity"
+
+
+@pytest.mark.parametrize("code,word", [("fr", "Calques"), ("pt", "Camadas"), ("zh", "图层"), ("hi", "परतें"),
+                                       ("de", "Ebenen"), ("ru", "Слои")])
+def test_switching_to_each_language_translates(code, word, restore_lang):
+    i18n.set_language(code)
+    assert i18n.current_language() == code and i18n.tr("Layers") == word
+    assert i18n.tr("never translated text") == "never translated text"
+
+
+def test_env_selects_new_languages(monkeypatch):
+    for code in OTHER_LANGS:
+        monkeypatch.setenv("PAINTMINT_LANG", code)
+        assert i18n._initial_language() == code
+
+
+@pytest.mark.parametrize("code", OTHER_LANGS)
+def test_main_window_builds_in_every_language(code, restore_lang):
+    from PyQt5 import QtWidgets
+    global _QAPP
+    _QAPP = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    i18n.set_language(code)
+    from paintmint.ui.main_window import MainWindow
+    win = MainWindow()
+    assert win.menuBar().actions()
+    win.close()

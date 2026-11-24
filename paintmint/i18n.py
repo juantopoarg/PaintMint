@@ -1,9 +1,9 @@
-"""Internacionalización mínima: inglés (predeterminado) y español.
+"""Internacionalización mínima: inglés (predeterminado), español, francés, portugués, chino, hindi, alemán y ruso.
 
 Los textos del código fuente están en inglés y ``tr()`` los traduce con el catálogo
 ``translations_es``. El idioma se resuelve al importar el módulo, en este orden:
 
-1. variable de entorno ``PAINTMINT_LANG`` (``en`` / ``es``),
+1. variable de entorno ``PAINTMINT_LANG`` (``en``, ``es``, ``fr``, ``pt``, ``zh``, ``hi``, ``de``, ``ru``),
 2. ``language`` en ``~/.config/paintmint/config.json``,
 3. inglés.
 
@@ -17,7 +17,8 @@ import os
 
 from . import config
 
-LANGUAGES = {"en": "English", "es": "Español"}
+LANGUAGES = {"en": "English", "es": "Español", "fr": "Français", "pt": "Português", "zh": "中文（简体）",
+             "hi": "हिन्दी", "de": "Deutsch", "ru": "Русский"}
 DEFAULT_LANGUAGE = "en"
 
 _lang = DEFAULT_LANGUAGE
@@ -28,7 +29,10 @@ def _load_catalog(code: str) -> dict:
     if code == "es":
         from .translations_es import ES
         return ES
-    return {}
+    if code == "en":
+        return {}
+    import importlib
+    return importlib.import_module(f"{__package__}.locales.{code}").T
 
 
 def set_language(code: str) -> None:

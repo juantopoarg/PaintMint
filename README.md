@@ -1,7 +1,7 @@
 # PaintMint
 
 A layered image editor for **Linux Mint** (and any Debian/Ubuntu-based distro), inspired by Paint.NET.
-It runs natively (no Windows, no Wine). The interface is in **English by default**; **Spanish** is selectable
+It runs natively (no Windows, no Wine). The interface is in **English by default**; **Spanish, French, Portuguese, Chinese (Simplified), Hindi, German and Russian** are selectable
 from *Help ▸ Language*.
 
 **Stack: Python 3 + PyQt5 (UI) + NumPy/SciPy/Pillow (pixels).** Everything ships in the Mint/Ubuntu repositories (`apt`), nothing has to be compiled, and the NumPy pixel core can be tested without a display.
@@ -51,10 +51,10 @@ You can also drag files onto the window. Each image opens in its own tab.
 
 ## Language
 
-English is the default. Choose *Help ▸ Language ▸ Español* (or *English*) and restart the application.
+English is the default. Choose *Help ▸ Language ▸ Español / Français / Português / 中文 / हिन्दी / Deutsch / Русский* (or *English*) and restart the application.
 The choice is stored in `~/.config/paintmint/config.json`; you can override it for one run with
-`PAINTMINT_LANG=es ./paintmint.sh`. Adding another language means adding one dictionary
-(`paintmint/translations_xx.py`) keyed by the English text.
+`PAINTMINT_LANG=fr ./paintmint.sh` (codes: `en es fr pt zh hi de ru`). Adding another language means adding one dictionary (`paintmint/locales/<code>.py`, `T = {...}`) and one entry in `i18n.LANGUAGES`; the catalog tests check that no message is missing.
+Catalogs are keyed by the English text.
 
 ## Automatic updates
 
@@ -85,7 +85,7 @@ Sliders (with numeric boxes) are also used for **size, hardness, opacity and the
 ```
 
 No display needed (Qt in `offscreen` mode) and no network (the updater tests use a fake downloader). Currently
-**408 tests pass**; 3 file-permission tests are skipped when running as `root` (root ignores permissions) and pass as a normal user.
+**428 tests pass**; 3 file-permission tests are skipped when running as `root` (root ignores permissions) and pass as a normal user.
 
 | File | Covers |
 |---|---|
@@ -98,7 +98,7 @@ No display needed (Qt in `offscreen` mode) and no network (the updater tests use
 | `test_effects.py` | brightness/contrast, levels, curves, hue/saturation, blur, sharpen, pixelate, noise, selection clipping |
 | `test_io.py` | PNG, JPG, BMP, GIF, TIFF and ORA round trips; EXIF, 16 bit, color modes, animated GIF |
 | `test_errors.py` | corrupt/truncated/empty/unsupported files, no permissions, disk full, missing folder, out of memory |
-| `test_i18n_updater.py` | complete Spanish catalog, English default, language switching; updater (version check, git/ZIP install, zip-slip rejection, rollback) |
+| `test_i18n_updater.py` | complete catalogs for the 7 translated languages (placeholders and newlines checked), English default, language switching; updater (version check, git/ZIP install, zip-slip rejection, rollback) |
 | `test_text_raster.py`, `test_ui_smoke.py` | text, raster primitives, the full window with simulated mouse, Colors window, sliders, About, Language menu |
 
 ## Architecture
@@ -121,7 +121,7 @@ paintmint/
 ├── effects/        Adjustments and effects with declarative parameters (the dialog builds itself)
 ├── ui/             PyQt5: zoomable canvas, panels, dialogs, Colors window widgets, About, main window
 ├── config.py       User settings (~/.config/paintmint/config.json)
-├── i18n.py         tr() + language selection; translations_es.py is the Spanish catalog
+├── i18n.py         tr() + language selection; translations_es.py (Spanish) and locales/ (fr, pt, zh, hi, de, ru) are the catalogs
 └── updater.py      GitHub update check/installer (standard library only)
 ```
 
@@ -163,7 +163,7 @@ Every error path produces a `PaintMintError` with a user-facing message; the UI 
 | Image | resize (4 methods), canvas size with anchor, flip, rotate 90/180/270, crop |
 | Editing | unlimited undo/redo + navigable history panel, copy/cut/paste (also "paste into new image"; pasting something **larger than the canvas asks whether to expand the canvas or keep its size**, like Paint.NET), delete/fill selection |
 | Colors | **Paint.NET-style Colors window** (wheel, RGB/HSV/Hex/Alpha, large palette with custom colors) |
-| Interface | **single-column** icon-only toolbox (Paint.NET order), **per-tool mouse cursor**, app icon: paint brush with a mint leaf, **English/Spanish**, About dialog with repo link and donation |
+| Interface | **single-column** icon-only toolbox (Paint.NET order), **per-tool mouse cursor**, app icon: paint brush with a mint leaf, **8 languages (English, Spanish, French, Portuguese, Chinese, Hindi, German, Russian)**, About dialog with repo link and donation |
 | View | zoom 2 %–6400 % (Ctrl+wheel, shortcuts), fit to window, pan with Space/middle button/Pan tool, transparency checkerboard, marching-ants selection |
 | Files | PNG, JPG (quality), BMP, GIF (1-bit transparency), TIFF (LZW), **ORA** (OpenRaster: keeps layers, text and modes), tabs, recent files, drag and drop |
 | Window | maximize/minimize buttons, **collapsible panels** (▾/▸ or double-click the title) in a single right-hand column, panels can **float** (⧉) or close (✕), *View ▸ Floating panels (Paint.NET layout)* floats them all over the canvas, *Reset panel layout*, blank white canvas on startup with the last canvas size |
@@ -197,7 +197,7 @@ Selection modifiers: `Ctrl` add · `Alt` subtract · `Ctrl+Alt` intersect · `Sh
 ## Steps to verify on Linux Mint
 
 1. `./scripts/install_deps.sh` finishes with "All good."
-2. `./scripts/run_tests.sh` → all green (408 passed).
+2. `./scripts/run_tests.sh` → all green (428 passed).
 3. `./paintmint.sh` opens the window in English. **File ▸ New** (800×600, white background).
 4. Brush (`B`): draw a stroke → `Ctrl+Z` removes it, `Ctrl+Y` brings it back.
 5. **Layers ▸ New layer**; draw on it; lower its opacity with the slider in the *Layers* panel; hide it with its checkbox.

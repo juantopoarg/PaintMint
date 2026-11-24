@@ -414,9 +414,11 @@ def test_language_menu_saves_choice(win, monkeypatch):
     from paintmint import config
     shown = []
     monkeypatch.setattr(QtWidgets.QMessageBox, "information", lambda *a, **k: shown.append(a))
-    assert set(win.lang_actions) == {"en", "es"}
-    win.act_set_language("es")
-    assert config.get("language") == "es" and shown
+    assert set(win.lang_actions) == {"en", "es", "fr", "pt", "zh", "hi", "de", "ru"}
+    for code in ("es", "fr", "pt", "zh", "hi", "de", "ru"):
+        win.act_set_language(code)
+        assert config.get("language") == code
+    assert shown
     win.act_set_language("en")
     assert config.get("language") == "en"
 
