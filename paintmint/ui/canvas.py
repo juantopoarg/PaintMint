@@ -350,7 +350,10 @@ class CanvasView(QAbstractScrollArea):
         if self._resize is not None:
             new, self._resize = self._resize["new"], None
             try:
-                self.session.resize_selection(new)
+                if self.tool_key == "move":              # Mover píxeles: los tiradores escalan el contenido
+                    self.session.scale_selection_content(new)
+                else:
+                    self.session.resize_selection(new)
             except PaintMintError as exc:
                 self.message.emit(str(exc))
             except (Exception, MemoryError) as exc:  # noqa: BLE001

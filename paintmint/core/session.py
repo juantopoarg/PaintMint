@@ -351,6 +351,67 @@ class EditSession:
             s.mask = m if m.any() else None
         return self._change_selection(apply, tr('Resize selection'))
 
+    def scale_selection_content(self, new_box) -> bool:
+        """Escala los píxeles seleccionados de la capa activa hasta ``new_box`` (x0, y0, x1, y1).
+
+        La selección se ajusta a la caja nueva. Un solo paso de historial (píxeles + selección).
+        """
+        doc = self.doc
+        sel = doc.selection
+        if not sel.active:
+            raise InvalidOperationError(tr('Make a selection first to create a layer from it.'))
+        layer = doc.active_layer
+        if not layer.visible:
+            raise InvalidOperationError(tr('The active layer is hidden. Make it visible to draw on it.'))
+        x0, y0, x1, y1 = sel.bbox()
+        nx0, ny0, nx1, ny1 = (int(round(v)) for v in new_box)
+        nx1, ny1 = max(nx1, nx0 + 1), max(ny1, ny0 + 1)
+        if (nx0, ny0, nx1, ny1) == (x0, y0, x1, y1) or x1 <= x0 or y1 <= y0:
+            return False
+        from PIL import Image
+        H, W = layer.pixels.shape[:2]
+        before = sel.mask.copy()
+        handle = self.begin_edit()
+        try:
+            snap = handle.snapshot
+            src = snap[y0:y1, x0:x1].copy()
+            src[..., 3] = (src[..., 3].astype(np.uint16) * before[y0:y1, x0:x1] // 255).astype(np.uint8)
+            size = (nx1 - nx0, ny1 - ny0)
+            scaled = np.asarray(Image.fromarray(np.ascontiguousarray(src), "RGBA").convert("RGBa")
+                                .resize(size, Image.BILINEAR).convert("RGBA"))
+            smask = np.asarray(Image.fromarray(np.ascontiguousarray(before[y0:y1, x0:x1])).resize(size, Image.BILINEAR))
+            union = raster.union_rect((x0, y0, x1, y1), raster.clip_rect((nx0, ny0, nx1, ny1), W, H))
+            ux0, uy0, ux1, uy1 = union
+            block = snap[uy0:uy1, ux0:ux1].copy()
+            block = raster.lerp_premult(block, np.zeros_like(block), before[uy0:uy1, ux0:ux1].astype(np.float32) / 255.0)
+            cx0, cy0, cx1, cy1 = max(nx0, 0), max(ny0, 0), min(nx1, W), min(ny1, H)
+            new_mask = np.zeros_like(before)
+            if cx1 > cx0 and cy1 > cy0:
+                part = scaled[cy0 - ny0:cy1 - ny0, cx0 - nx0:cx1 - nx0]
+                reg = block[cy0 - uy0:cy1 - uy0, cx0 - ux0:cx1 - ux0]
+                block[cy0 - uy0:cy1 - uy0, cx0 - ux0:cx1 - ux0] = raster.over(
+                    reg, part[..., :3], part[..., 3].astype(np.float32) / 255.0)
+                new_mask[cy0:cy1, cx0:cx1] = smask[cy0 - ny0:cy1 - ny0, cx0 - nx0:cx1 - nx0]
+            handle.write(union, block, clip=False)
+            sel.mask = new_mask if new_mask.any() else None
+            doc.emit("selection")
+            changed = handle.commit(tr('Scale selection'),
+                                    extra=[C.SelectionCommand(before, None if sel.mask is None else sel.mask.copy())])
+        except MemoryError as exc:
+            handle.cancel()
+            sel.mask = before
+            doc.emit("selection")
+            raise OutOfMemoryAppError(tr('Not enough memory to complete the operation.')) from exc
+        except Exception:
+            handle.cancel()
+            sel.mask = before
+            doc.emit("selection")
+            raise
+        if not changed:
+            sel.mask = before
+            doc.emit("selection")
+        return changed
+
     def select_polygon(self, points, mode="replace") -> bool:
         return self._change_selection(lambda s: s.select_polygon(points, mode), tr('Lasso select'))
 

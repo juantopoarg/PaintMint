@@ -658,3 +658,5 @@ T = {' copy': ' प्रति',
  'the operation': 'ऑपरेशन करने'}
 
 T["Resize selection"] = "चयन का आकार बदलें"
+
+T["Scale selection"] = "चयन को स्केल करें"

@@ -656,3 +656,5 @@ T = {' copy': ' cópia',
  'the operation': 'realizar a operação'}
 
 T["Resize selection"] = "Redimensionar seleção"
+
+T["Scale selection"] = "Dimensionar seleção"

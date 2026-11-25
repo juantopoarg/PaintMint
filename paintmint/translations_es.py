@@ -533,4 +533,5 @@ ES = {
     'Zoom': 'Zoom',
     'Zoom blur': 'Desenfoque de zoom',
     'Resize selection': 'Redimensionar selección',
+    'Scale selection': 'Escalar selección',
 }

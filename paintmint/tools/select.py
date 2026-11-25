@@ -246,7 +246,7 @@ class MoveSelectionTool(Tool):
 # ---------------------------------------------------------------------------
 HANDLES = {"nw": (0.0, 0.0), "n": (0.5, 0.0), "ne": (1.0, 0.0), "e": (1.0, 0.5),
            "se": (1.0, 1.0), "s": (0.5, 1.0), "sw": (0.0, 1.0), "w": (0.0, 0.5)}
-RESIZE_TOOLS = ("select_rect", "select_ellipse", "select_lasso", "select_wand")
+RESIZE_TOOLS = ("select_rect", "select_ellipse", "select_lasso", "select_wand", "move")   # «move» escala los píxeles
 
 
 def handle_points(box):

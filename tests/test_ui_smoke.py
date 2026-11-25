@@ -806,3 +806,49 @@ def test_handles_do_not_appear_for_other_tools(win):
     drag(view, [(10, 10), (60, 50)])
     win.select_tool("brush")
     assert view._handle_at(screen_pos(view, 60, 50)) is None
+
+
+def test_move_tool_handles_scale_the_pixels_inside_the_selection(win):
+    import numpy as np
+    view = win.add_document(Document(200, 150))
+    view.set_zoom(1.0)
+    doc = view.session.doc
+    doc.active_layer.pixels[20:40, 20:40] = (255, 0, 0, 255)               # cuadrado rojo de 20×20
+    view.session.select_rect(20, 20, 40, 40)
+    win.select_tool("move")
+    drag(view, [(40, 40), (80, 80)])                                       # esquina inferior derecha → 60×60
+    px = doc.active_layer.pixels
+    assert doc.selection.bbox() == (20, 20, 80, 80)
+    assert (px[22:78, 22:78] == (255, 0, 0, 255)).all()                    # el contenido se estiró
+    assert tuple(px[85, 85]) == tuple(px[10, 10]) and tuple(px[85, 85]) != (255, 0, 0, 255)   # fuera: fondo intacto
+    view.session.undo()
+    px = doc.active_layer.pixels
+    assert (px[20:40, 20:40] == (255, 0, 0, 255)).all() and tuple(px[50, 50]) != (255, 0, 0, 255)
+    assert doc.selection.bbox() == (20, 20, 40, 40)
+
+
+def test_select_tools_handles_still_only_resize_the_outline(win):
+    view = win.add_document(Document(100, 100))
+    view.set_zoom(1.0)
+    doc = view.session.doc
+    doc.active_layer.pixels[20:40, 20:40] = (255, 0, 0, 255)
+    view.session.select_rect(20, 20, 40, 40)
+    win.select_tool("select_rect")
+    drag(view, [(40, 40), (80, 80)])
+    assert doc.selection.bbox() == (20, 20, 80, 80) and tuple(doc.active_layer.pixels[60, 60]) != (255, 0, 0, 255)
+
+
+def test_scaling_down_and_hidden_layer_error(win):
+    view = win.add_document(Document(100, 100))
+    view.set_zoom(1.0)
+    doc = view.session.doc
+    doc.active_layer.pixels[20:60, 20:60] = (0, 0, 255, 255)
+    view.session.select_rect(20, 20, 60, 60)
+    win.select_tool("move")
+    drag(view, [(20, 20), (40, 40)])                                       # esquina sup. izq. hacia dentro → 20×20
+    assert doc.selection.bbox() == (40, 40, 60, 60)
+    assert doc.active_layer.pixels[30, 30, 3] == 0 and (doc.active_layer.pixels[45:55, 45:55] == (0, 0, 255, 255)).all()
+    doc.active_layer.visible = False
+    from paintmint.core.errors import InvalidOperationError
+    with pytest.raises(InvalidOperationError):
+        view.session.scale_selection_content((0, 0, 30, 30))

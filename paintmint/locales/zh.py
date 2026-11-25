@@ -561,3 +561,5 @@ T = {' copy': ' 副本',
  'the operation': '执行该操作'}
 
 T["Resize selection"] = "调整选区大小"
+
+T["Scale selection"] = "缩放选区内容"
