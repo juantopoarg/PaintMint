@@ -239,3 +239,62 @@ class MoveSelectionTool(Tool):
             ctx.session.doc.selection.mask = self.orig
             ctx.session.doc.emit("selection")
         self.orig = None
+
+
+# ---------------------------------------------------------------------------
+# Tiradores de redimensionado de la selección (esquinas y lados de su caja)
+# ---------------------------------------------------------------------------
+HANDLES = {"nw": (0.0, 0.0), "n": (0.5, 0.0), "ne": (1.0, 0.0), "e": (1.0, 0.5),
+           "se": (1.0, 1.0), "s": (0.5, 1.0), "sw": (0.0, 1.0), "w": (0.0, 0.5)}
+RESIZE_TOOLS = ("select_rect", "select_ellipse", "select_lasso", "select_wand")
+
+
+def handle_points(box):
+    x0, y0, x1, y1 = box
+    return {k: (x0 + (x1 - x0) * fx, y0 + (y1 - y0) * fy) for k, (fx, fy) in HANDLES.items()}
+
+
+def hit_handle(box, x, y, tol):
+    """Tirador de la caja más cercano a (x, y) dentro de ``tol`` (unidades de imagen), o None.
+
+    Las esquinas tienen prioridad sobre los lados.
+    """
+    best, best_d = None, tol
+    for k, (hx, hy) in handle_points(box).items():
+        d = max(abs(hx - x), abs(hy - y))
+        if d < best_d or (d == best_d and best is not None and len(k) == 2 and len(best) == 1):
+            best, best_d = k, d
+    return best
+
+
+def resized_box(box, handle, x, y, keep_aspect=False):
+    """Caja resultante de arrastrar ``handle`` hasta (x, y); admite cruzar el lado opuesto (voltea)."""
+    x0, y0, x1, y1 = box
+    fx, fy = HANDLES[handle]
+    nx0, ny0, nx1, ny1 = x0, y0, x1, y1
+    if fx == 0.0:
+        nx0 = x
+    elif fx == 1.0:
+        nx1 = x
+    if fy == 0.0:
+        ny0 = y
+    elif fy == 1.0:
+        ny1 = y
+    if keep_aspect and len(handle) == 2 and (x1 - x0) > 0 and (y1 - y0) > 0:
+        ratio = (x1 - x0) / (y1 - y0)
+        ax, ay = (x1 if fx == 0.0 else x0), (y1 if fy == 0.0 else y0)     # esquina opuesta (fija)
+        w, h = abs((nx1 if fx == 1.0 else nx0) - ax), abs((ny1 if fy == 1.0 else ny0) - ay)
+        if w / ratio > h:
+            h = w / ratio
+        else:
+            w = h * ratio
+        sx = 1 if x >= ax else -1
+        sy = 1 if y >= ay else -1
+        nx0, nx1 = sorted((ax, ax + sx * w))
+        ny0, ny1 = sorted((ay, ay + sy * h))
+    return min(nx0, nx1), min(ny0, ny1), max(nx0, nx1), max(ny0, ny1)
+
+
+def cursor_name(handle):
+    return {"nw": "fdiag", "se": "fdiag", "ne": "bdiag", "sw": "bdiag", "n": "ver", "s": "ver",
+            "e": "hor", "w": "hor"}[handle]

@@ -559,3 +559,5 @@ T = {' copy': ' 副本',
  'resize the image': '调整图像大小',
  'save the image': '保存图像',
  'the operation': '执行该操作'}
+
+T["Resize selection"] = "调整选区大小"

@@ -737,3 +737,72 @@ def test_effects_menu_has_the_nine_submenus(win):
             assert len(menu.actions()) == len(PDN_EFFECTS[g])
         adj = [a for a in win.menuBar().actions() if a.menu() and "djust" in a.text()][0].menu()
         assert len(adj.actions()) == len(PDN_ADJUSTMENTS)
+
+
+# ---------------------------------------------------------------- v1.3.8: tiradores de la selección
+def test_pure_handle_logic():
+    from paintmint.tools.select import hit_handle, resized_box
+    box = (10, 10, 60, 50)
+    assert hit_handle(box, 11, 9, 4) == "nw" and hit_handle(box, 60, 50, 4) == "se"
+    assert hit_handle(box, 35, 10, 4) == "n" and hit_handle(box, 35, 30, 4) is None
+    assert resized_box(box, "se", 80, 70) == (10, 10, 80, 70)
+    assert resized_box(box, "w", 0, 99) == (0, 10, 60, 50)
+    assert resized_box(box, "se", 0, 0) == (0, 0, 10, 10)             # cruzar el opuesto voltea la caja
+    x0, y0, x1, y1 = resized_box(box, "se", 110, 60, keep_aspect=True)  # Mayús conserva la proporción 5:4
+    assert abs((x1 - x0) / (y1 - y0) - 50 / 40) < 1e-6 and (x0, y0) == (10, 10)
+
+
+def test_dragging_a_corner_resizes_a_rectangular_selection(win):
+    view = win.add_document(Document(200, 150))
+    view.set_zoom(1.0)
+    win.select_tool("select_rect")
+    drag(view, [(10, 10), (60, 50)])
+    drag(view, [(60, 50), (90, 80)])                       # esquina inferior derecha
+    sel = view.session.doc.selection
+    assert sel.bbox() == (10, 10, 90, 80) and (sel.mask[10:80, 10:90] == 255).all()
+    drag(view, [(10, 10), (0, 0)])                         # esquina superior izquierda hacia afuera
+    assert sel.bbox() == (0, 0, 90, 80)
+    view.session.undo()
+    assert view.session.doc.selection.bbox() == (10, 10, 90, 80)
+
+
+def test_dragging_a_side_handle_and_cursor_feedback(win):
+    view = win.add_document(Document(200, 150))
+    view.set_zoom(1.0)
+    win.select_tool("select_rect")
+    drag(view, [(10, 10), (60, 50)])
+    vp = view.viewport()
+    QTest.mouseMove(vp, screen_pos(view, 60, 30))
+    assert vp.cursor().shape() == Qt.SizeHorCursor
+    QTest.mouseMove(vp, screen_pos(view, 60, 50))
+    assert vp.cursor().shape() == Qt.SizeFDiagCursor
+    QTest.mouseMove(vp, screen_pos(view, 30, 30))
+    assert vp.cursor().shape() != Qt.SizeFDiagCursor
+    drag(view, [(60, 30), (100, 30)])
+    assert view.session.doc.selection.bbox() == (10, 10, 100, 50)
+    view.grab()                                            # pinta tiradores sin fallar
+
+
+def test_resizing_an_ellipse_selection_keeps_its_shape_and_esc_cancels(win):
+    view = win.add_document(Document(200, 150))
+    view.set_zoom(1.0)
+    win.select_tool("select_ellipse")
+    drag(view, [(20, 20), (80, 60)])
+    sel = view.session.doc.selection
+    ox, oy = sel.bbox()[:2]                                # el borde suave de la elipse puede ocupar 1 px más
+    drag(view, [(80, 60), (140, 100)])
+    assert sel.bbox() == (ox, oy, 140, 100)
+    assert sel.mask[60, 80] > 127 and sel.mask[21, 21] < 128        # centro dentro, esquina fuera
+    QTest.mousePress(view.viewport(), Qt.LeftButton, Qt.NoModifier, screen_pos(view, 140, 100))
+    view.handle_escape()
+    QTest.mouseRelease(view.viewport(), Qt.LeftButton, Qt.NoModifier, screen_pos(view, 150, 110))
+    assert view.session.doc.selection.bbox() == (ox, oy, 140, 100)
+
+
+def test_handles_do_not_appear_for_other_tools(win):
+    view = win.add_document(Document(200, 150))
+    view.set_zoom(1.0)
+    win.select_tool("select_rect")
+    drag(view, [(10, 10), (60, 50)])
+    win.select_tool("brush")
+    assert view._handle_at(screen_pos(view, 60, 50)) is None

@@ -13,11 +13,13 @@ from PyQt5.QtWidgets import QAbstractScrollArea, QApplication
 from ..core.errors import PaintMintError
 from ..core.session import EditSession
 from ..tools import ToolContext
+from ..tools.select import RESIZE_TOOLS, cursor_name, handle_points, hit_handle, resized_box
 from .icons import tool_cursor
 from .qtutil import qimage_from_rgba
 
 MIN_ZOOM, MAX_ZOOM = 0.02, 64.0
 MARGIN = 24
+HANDLE_PX = 7          # radio de captura de los tiradores de la selección (píxeles de pantalla)
 PAINTING_TOOLS = ("brush", "pencil", "eraser", "clone", "recolor")
 
 
@@ -42,6 +44,8 @@ class CanvasView(QAbstractScrollArea):
         self._mouse_img = None
         self._phase = 0
         self._cursor_cache = {}
+        self._sel_box = None            # caja de la selección en caché (se invalida con el evento «selection»)
+        self._resize = None             # gesto de redimensionado: {'handle', 'box', 'new'}
         self.setMouseTracking(True)
         self.viewport().setMouseTracking(True)
         self.viewport().setAttribute(Qt.WA_OpaquePaintEvent, True)
@@ -64,6 +68,8 @@ class CanvasView(QAbstractScrollArea):
             self._qimg = qimage_from_rgba(self._comp, copy=False)
 
     def _on_doc_event(self, kind, payload):
+        if kind in ("selection", "size", "structure"):
+            self._sel_box = None
         doc = self.session.doc
         if kind == "size":
             self._comp = None
@@ -167,6 +173,41 @@ class CanvasView(QAbstractScrollArea):
             self._cursor_cache[key] = tool_cursor(key)
         self.viewport().setCursor(self._cursor_cache[key])
 
+    # -- tiradores de la selección ---------------------------------------------
+    def _selection_box(self):
+        sel = self.session.doc.selection
+        if not sel.active:
+            return None
+        if self._sel_box is None:
+            self._sel_box = sel.bbox()
+        x0, y0, x1, y1 = self._sel_box
+        return self._sel_box if x1 > x0 and y1 > y0 else None
+
+    def _handle_at(self, pos):
+        """Tirador bajo ``pos`` (pantalla) si la herramienta actual muestra tiradores."""
+        if self.tool_key not in RESIZE_TOOLS or self._space or self._active_tool is not None:
+            return None
+        box = self._selection_box()
+        if box is None:
+            return None
+        x, y = self.to_image(pos)
+        return hit_handle(box, x, y, HANDLE_PX / self.zoom)
+
+    def _update_hover_cursor(self, pos):
+        h = self._handle_at(pos) if self._resize is None else self._resize["handle"]
+        if h is None:
+            self._apply_cursor()
+            return
+        shape = {"fdiag": Qt.SizeFDiagCursor, "bdiag": Qt.SizeBDiagCursor, "ver": Qt.SizeVerCursor,
+                 "hor": Qt.SizeHorCursor}[cursor_name(h)]
+        self.viewport().setCursor(shape)
+
+    def _cancel_resize(self):
+        if self._resize is not None:
+            self._resize = None
+            self._apply_cursor()
+            self.viewport().update()
+
     def _ctx(self):
         return ToolContext(self.session, self.options)
 
@@ -202,7 +243,9 @@ class CanvasView(QAbstractScrollArea):
 
     def handle_escape(self):
         """Esc: cancela el gesto o la edición pendiente; si no hay ninguno, anula la selección (como Ctrl+D)."""
-        if self._active_tool is not None:
+        if self._resize is not None:
+            self._cancel_resize()
+        elif self._active_tool is not None:
             self.cancel_gesture()
         elif self._cancel_pending():
             pass
@@ -253,6 +296,12 @@ class CanvasView(QAbstractScrollArea):
             return
         if e.button() not in (Qt.LeftButton, Qt.RightButton):
             return
+        if e.button() == Qt.LeftButton:
+            h = self._handle_at(e.pos())
+            if h is not None:                       # arrastrar un tirador redimensiona la selección
+                self._resize = {"handle": h, "box": self._selection_box(), "new": self._selection_box()}
+                self._update_hover_cursor(e.pos())
+                return
         tool = self.tools.get(self.tool_key)
         if tool is None:
             return
@@ -281,8 +330,15 @@ class CanvasView(QAbstractScrollArea):
             self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - d.x())
             self.verticalScrollBar().setValue(self.verticalScrollBar().value() - d.y())
             return
+        if self._resize is not None:
+            r = self._resize
+            r["new"] = resized_box(r["box"], r["handle"], x, y, "shift" in self._mods())
+            self.viewport().update()
+            return
         if self._active_tool is not None:
             self._run(self._active_tool.move, x, y, self._mods())
+        elif not e.buttons():
+            self._update_hover_cursor(e.pos())
         if self._active_tool is not None or self.tool_key in PAINTING_TOOLS:
             self.viewport().update()
 
@@ -290,6 +346,18 @@ class CanvasView(QAbstractScrollArea):
         if self._pan_last is not None:
             self._pan_last = None
             self._apply_cursor()
+            return
+        if self._resize is not None:
+            new, self._resize = self._resize["new"], None
+            try:
+                self.session.resize_selection(new)
+            except PaintMintError as exc:
+                self.message.emit(str(exc))
+            except (Exception, MemoryError) as exc:  # noqa: BLE001
+                self.error.emit(exc)
+            self._apply_cursor()
+            self.viewport().update()
+            self.tool_finished.emit()
             return
         tool, self._active_tool = self._active_tool, None
         if tool is not None:
@@ -370,6 +438,7 @@ class CanvasView(QAbstractScrollArea):
         p.drawImage(target, self._qimg, QRectF(0, 0, doc.width, doc.height))
         self._paint_selection(p, target)
         self._paint_overlay(p)
+        self._paint_handles(p)
         p.end()
 
     def _paint_selection(self, p, target):
@@ -398,6 +467,28 @@ class CanvasView(QAbstractScrollArea):
         img = qimage_from_rgba(rgba)
         p.setRenderHint(QPainter.SmoothPixmapTransform, False)
         p.drawImage(vis.topLeft(), img)
+
+    def _paint_handles(self, p):
+        if self.tool_key not in RESIZE_TOOLS or self._active_tool is not None:
+            return
+        box = self._resize["new"] if self._resize is not None else self._selection_box()
+        if box is None:
+            return
+        p.setRenderHint(QPainter.Antialiasing, False)
+        if self._resize is not None:                       # vista previa del nuevo contorno
+            a, b = self._to_screen(box[0], box[1]), self._to_screen(box[2], box[3])
+            for color, off in ((QColor(255, 255, 255), 0), (QColor(0, 0, 0), 4)):
+                pen = QPen(color, 1, Qt.CustomDashLine)
+                pen.setDashPattern([4, 4])
+                pen.setDashOffset(off)
+                p.setPen(pen)
+                p.setBrush(Qt.NoBrush)
+                p.drawRect(QRectF(a, b))
+        for hx, hy in handle_points(box).values():
+            c = self._to_screen(hx, hy)
+            p.setBrush(QColor(255, 255, 255))
+            p.setPen(QPen(QColor(0, 0, 0), 1))
+            p.drawRect(QRectF(round(c.x()) - 3.5, round(c.y()) - 3.5, 7, 7))
 
     def _to_screen(self, x, y):
         ox, oy = self._origin()

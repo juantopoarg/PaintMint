@@ -656,3 +656,5 @@ T = {' copy': ' प्रति',
  'resize the image': 'छवि का आकार बदलने',
  'save the image': 'छवि सहेजने',
  'the operation': 'ऑपरेशन करने'}
+
+T["Resize selection"] = "चयन का आकार बदलें"

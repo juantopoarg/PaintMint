@@ -654,3 +654,5 @@ T = {' copy': ' cópia',
  'resize the image': 'redimensionar a imagem',
  'save the image': 'salvar a imagem',
  'the operation': 'realizar a operação'}
+
+T["Resize selection"] = "Redimensionar seleção"

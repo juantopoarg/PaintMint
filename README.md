@@ -85,7 +85,7 @@ Sliders (with numeric boxes) are also used for **size, hardness, opacity and the
 ```
 
 No display needed (Qt in `offscreen` mode) and no network (the updater tests use a fake downloader). Currently
-**428 tests pass**; 3 file-permission tests are skipped when running as `root` (root ignores permissions) and pass as a normal user.
+**433 tests pass**; 3 file-permission tests are skipped when running as `root` (root ignores permissions) and pass as a normal user.
 
 | File | Covers |
 |---|---|
@@ -154,7 +154,7 @@ Every error path produces a `PaintMintError` with a user-facing message; the UI 
 | Area | Features |
 |---|---|
 | Layers | new, **new layer via copy (Ctrl+J) / via cut (Ctrl+Shift+J)**, duplicate, delete, move up/down, merge down, flatten, visibility, opacity, 14 blend modes, rename, flip layer, rasterize text, compositing on save |
-| Selection | rectangle, ellipse, lasso, magic wand (**tolerance slider**, contiguous/global, sample image), add/subtract/intersect/XOR, invert, all/none, move selected pixels, **move selection only**, crop to selection; **Esc clears the selection** (same as Ctrl+D; if a gesture is in progress, Esc cancels it first) |
+| Selection | rectangle, ellipse, lasso, magic wand (**tolerance slider**, contiguous/global, sample image), **8 resize handles** on the selection box (drag a corner or side; Shift keeps proportions, Esc cancels), add/subtract/intersect/XOR, invert, all/none, move selected pixels, **move selection only**, crop to selection; **Esc clears the selection** (same as Ctrl+D; if a gesture is in progress, Esc cancels it first) |
 | Drawing | brush (width, hardness, opacity, antialiasing, blending), pencil, eraser, paint bucket, gradients (linear, reflected, diamond, radial, conical), shapes as separate tools (line, **curve**, rectangle, rounded rectangle, ellipse, **freeform shape**, **polygon**; outline/fill/both; Shift = proportional), **clone stamp** (Ctrl+click sets the source), **recolor**, color picker |
 | Shape options | Paint.NET-style tool bar: **brush width**, **fill** (solid color or hatch: horizontal, vertical, diagonal, cross, diagonal cross, dots, small/large checkerboard — foreground = fill color, background = the other color), **line style** (solid, dashed, dotted, dash-dot, dash-dot-dot), **antialiasing**, **blending** (normal / overwrite, i.e. alpha blending off) |
 | Text | editable text layers: font, size, bold, italic, alignment, color, drag to move |
@@ -197,7 +197,7 @@ Selection modifiers: `Ctrl` add · `Alt` subtract · `Ctrl+Alt` intersect · `Sh
 ## Steps to verify on Linux Mint
 
 1. `./scripts/install_deps.sh` finishes with "All good."
-2. `./scripts/run_tests.sh` → all green (428 passed).
+2. `./scripts/run_tests.sh` → all green (433 passed).
 3. `./paintmint.sh` opens the window in English. **File ▸ New** (800×600, white background).
 4. Brush (`B`): draw a stroke → `Ctrl+Z` removes it, `Ctrl+Y` brings it back.
 5. **Layers ▸ New layer**; draw on it; lower its opacity with the slider in the *Layers* panel; hide it with its checkbox.

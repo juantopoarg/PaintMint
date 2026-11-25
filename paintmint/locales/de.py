@@ -669,3 +669,5 @@ T = {' copy': ' Kopie',
  'resize the image': 'die Bildgröße zu ändern',
  'save the image': 'das Bild zu speichern',
  'the operation': 'den Vorgang auszuführen'}
+
+T["Resize selection"] = "Auswahl skalieren"

@@ -532,4 +532,5 @@ ES = {
     'Wrap': 'Repetir',
     'Zoom': 'Zoom',
     'Zoom blur': 'Desenfoque de zoom',
+    'Resize selection': 'Redimensionar selección',
 }

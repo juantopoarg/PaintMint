@@ -324,6 +324,33 @@ class EditSession:
     def select_ellipse(self, x0, y0, x1, y1, mode="replace") -> bool:
         return self._change_selection(lambda s: s.select_ellipse(x0, y0, x1, y1, mode), tr('Ellipse select'))
 
+    def resize_selection(self, new_box) -> bool:
+        """Lleva la selección actual a la caja ``new_box`` (x0, y0, x1, y1) en un solo paso de historial.
+
+        Un rectángulo se recalcula exacto; el resto (elipse, lazo, varita) se reescala con su forma.
+        """
+        sel = self.doc.selection
+        if not sel.active:
+            return False
+        x0, y0, x1, y1 = sel.bbox()
+        nx0, ny0, nx1, ny1 = (int(round(v)) for v in new_box)
+        nx1, ny1 = max(nx1, nx0 + 1), max(ny1, ny0 + 1)
+        if (nx0, ny0, nx1, ny1) == (x0, y0, x1, y1) or x1 <= x0 or y1 <= y0:
+            return False
+        crop = sel.mask[y0:y1, x0:x1]
+        if (crop == 255).all():
+            return self._change_selection(lambda s: s.select_rect(nx0, ny0, nx1, ny1, "replace"), tr('Resize selection'))
+        from PIL import Image
+        scaled = np.asarray(Image.fromarray(np.ascontiguousarray(crop)).resize((nx1 - nx0, ny1 - ny0), Image.BILINEAR))
+
+        def apply(s):
+            m = np.zeros_like(s.mask)
+            cx0, cy0, cx1, cy1 = max(nx0, 0), max(ny0, 0), min(nx1, s.width), min(ny1, s.height)
+            if cx1 > cx0 and cy1 > cy0:
+                m[cy0:cy1, cx0:cx1] = scaled[cy0 - ny0:cy1 - ny0, cx0 - nx0:cx1 - nx0]
+            s.mask = m if m.any() else None
+        return self._change_selection(apply, tr('Resize selection'))
+
     def select_polygon(self, points, mode="replace") -> bool:
         return self._change_selection(lambda s: s.select_polygon(points, mode), tr('Lasso select'))
 
